@@ -67,16 +67,17 @@ module.exports = async (req, res) => {
         const statusText = statusMessages[normalizedStatus] || `has been updated (${orderStatus || 'status unknown'})`;
 
         // 5. Prepare AiSensy Payload
-        // Template: {{1}} = Name, {{2}} = Order No, {{3}} = Order No (for URL button)
+        // Template: {{1}} = Name, {{2}} = Order No, {{3}} = Status Text, {{4}} = Order No (for URL button)
         const aisensyData = {
             apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4NDdiZDI5OGI0YWI1MGMwN2RiYzk4NiIsIm5hbWUiOiJTbGFwcGluIEZvb2RzIFB2dCBMdGQiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjg0N2JkMjk4YjRhYjUwYzA3ZGJjOTgxIiwiYWN0aXZlUGxhbiI6IkJBU0lDX1lFQVJMWSIsImlhdCI6MTc2NjAzOTQ1OH0.OO4Yoj-800AudUM1B8i9IJ78BK_TepVqnmkdPDVuqTM",
-            campaignName: "zippee_aisensy_bridge",
+            campaignName: "zippee_order_status_update",
             destination: formattedPhone,
             userName: customerName || "Customer",
             templateParams: [
                 String(customerName || "Customer"), // {{1}} - Customer Name
                 String(orderNo || "Order"),          // {{2}} - Order Number
-                String(orderNo || "Order")           // {{3}} - Order Number (for URL button)
+                statusText,                          // {{3}} - Status (e.g. "has been shipped")
+                String(orderNo || "Order")           // {{4}} - Order Number (for URL button)
             ]
         };
 
