@@ -68,7 +68,7 @@ module.exports = async (req, res) => {
 
         // 5. Prepare AiSensy Payload
         // Body: {{1}} = Name, {{2}} = Order No, {{3}} = Status Text
-        // URL Button: {{1}} = Order No (button params are numbered separately)
+        // URL Button {{1}} = Order No (passed as 4th item in templateParams)
         const aisensyData = {
             apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4NDdiZDI5OGI0YWI1MGMwN2RiYzk4NiIsIm5hbWUiOiJTbGFwcGluIEZvb2RzIFB2dCBMdGQiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjg0N2JkMjk4YjRhYjUwYzA3ZGJjOTgxIiwiYWN0aXZlUGxhbiI6IkJBU0lDX1lFQVJMWSIsImlhdCI6MTc2NjAzOTQ1OH0.OO4Yoj-800AudUM1B8i9IJ78BK_TepVqnmkdPDVuqTM",
             campaignName: "zippee_order_status_update",
@@ -77,10 +77,8 @@ module.exports = async (req, res) => {
             templateParams: [
                 String(customerName || "Customer"), // Body {{1}} - Customer Name
                 String(orderNo || "Order"),          // Body {{2}} - Order Number
-                statusText                           // Body {{3}} - Status (e.g. "has been shipped")
-            ],
-            buttonParams: [
-                String(orderNo || "Order")           // URL Button {{1}} - Order Number for tracking link
+                statusText,                          // Body {{3}} - Status (e.g. "has been shipped")
+                String(orderNo || "Order")           // URL Button {{1}} - Order No for tracking link
             ]
         };
 
