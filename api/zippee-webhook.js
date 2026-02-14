@@ -95,12 +95,9 @@ module.exports = async (req, res) => {
             destination: formattedPhone,
             userName: name,
             templateParams: [
-                name,           // {{1}} - Customer Name
-                orderNumber,    // {{2}} - Order Number
-                statusText      // {{3}} - Status text (e.g. "has been shipped!")
-            ],
-            // Explicitly pass order number for URL button to prevent cross-messaging
-            buttonParams: [
+                name,           // Body {{1}} - Customer Name
+                orderNumber,    // Body {{2}} - Order Number
+                statusText,     // Body {{3}} - Status text (e.g. "has been shipped!")
                 orderNumber     // Button URL {{1}} → ?orderNumber=<orderNo>
             ]
         };
