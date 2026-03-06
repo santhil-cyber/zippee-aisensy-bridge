@@ -20,8 +20,8 @@ module.exports = async (req, res) => {
         const phoneNumber = body.phoneNumber;
         const customerName = body.customerName;
         const orderNo = body.orderNo;
-        const orderStatus = body.orderStatus;           // e.g. "DELIVERED"
-        const notificationType = body.notificationType; // e.g. "DELIVEREDNOTIFICATION"
+        const orderStatus = body.orderStatus;
+        const notificationType = body.notificationType;
 
         // Validate required fields
         if (!phoneNumber) {
@@ -37,13 +37,13 @@ module.exports = async (req, res) => {
         // 3. Normalize status from orderStatus or notificationType
         const normalizedStatus = normalizeStatus(orderStatus, notificationType);
 
-        // 4. Only send WhatsApp for important statuses
+        // 4. Only send WhatsApp for the 5 enabled statuses
         const importantStatuses = {
-            'shipped': 'has been shipped! It\'s on its way to you 🚚',
-            'out_for_delivery': 'is out for delivery! You\'ll receive it very soon 🛵',
+            'created': 'has been created successfully! We\'re getting it ready for you 📦',
+            'picked_up': 'has been picked up by our delivery partner! It\'s on its way 🚚',
             'delivered': 'has been delivered successfully! 🎉',
+            'attempted_delivery': 'delivery was attempted but couldn\'t be completed. Our team will try again soon 🔔',
             'cancelled': 'has been cancelled. Please reach out to us for any queries ❌',
-            'rto': 'is being returned to the seller 🔄',
         };
 
         if (!importantStatuses[normalizedStatus]) {
@@ -81,11 +81,6 @@ module.exports = async (req, res) => {
         formattedPhone = `+91${formattedPhone}`;
 
         // 6. Prepare AiSensy Payload
-        // Template: Hey {{1}} 👋
-        //           Your order *{{2}}* {{3}}.
-        //           Track your order here or contact us for any queries...
-        //           Thank you for shopping with Protein Pantry!
-        // Button URL: https://www.zippee.delivery/track-order?orderNumber={{1}}
         const name = String(customerName || 'Customer');
         const orderNumber = String(orderNo);
 
@@ -97,7 +92,7 @@ module.exports = async (req, res) => {
             templateParams: [
                 name,           // Body {{1}} - Customer Name
                 orderNumber,    // Body {{2}} - Order Number
-                statusText,     // Body {{3}} - Status text (e.g. "has been shipped!")
+                statusText,     // Body {{3}} - Status text
                 orderNumber     // Button URL {{1}} → ?orderNumber=<orderNo>
             ]
         };
@@ -127,40 +122,34 @@ module.exports = async (req, res) => {
 
 /**
  * Normalize Zippee's orderStatus and notificationType into a consistent key.
- * Zippee sends statuses like "DELIVERED" and notification types like "DELIVEREDNOTIFICATION".
+ * Only the 5 enabled events are mapped:
+ *   Order Created, Order Pickedup, Order Delivered,
+ *   Order Attempted Delivery, Order Cancelled.
  */
 function normalizeStatus(orderStatus, notificationType) {
     const raw = (orderStatus || '').toString().toUpperCase().trim();
     const notif = (notificationType || '').toString().toUpperCase().trim();
 
-    // Map from Zippee's values to our normalized keys
+    // Map from Zippee's orderStatus values to our normalized keys
     const statusMap = {
-        // orderStatus values
-        'SHIPPED': 'shipped',
-        'INTRANSIT': 'in_transit',
-        'IN_TRANSIT': 'in_transit',
-        'OUTFORDELIVERY': 'out_for_delivery',
-        'OUT_FOR_DELIVERY': 'out_for_delivery',
+        'CREATED': 'created',
+        'PICKEDUP': 'picked_up',
+        'PICKED_UP': 'picked_up',
         'DELIVERED': 'delivered',
+        'ATTEMPTEDDELIVERY': 'attempted_delivery',
+        'ATTEMPTED_DELIVERY': 'attempted_delivery',
         'CANCELLED': 'cancelled',
         'CANCELED': 'cancelled',
-        'RTO': 'rto',
-        'RETURNED': 'rto',
-        'CREATED': 'created',
-        'CONFIRMED': 'confirmed',
-        'PROCESSING': 'processing',
-        'READY_TO_SHIP': 'ready_to_ship',
     };
 
-    // notificationType values (e.g. "DELIVEREDNOTIFICATION")
+    // Map from Zippee's notificationType values (pattern: <STATUS>NOTIFICATION)
     const notifMap = {
-        'SHIPPEDNOTIFICATION': 'shipped',
-        'INTRANSITNOTIFICATION': 'in_transit',
-        'OUTFORDELIVERYNOTIFICATION': 'out_for_delivery',
+        'CREATEDNOTIFICATION': 'created',
+        'PICKEDUPNOTIFICATION': 'picked_up',
         'DELIVEREDNOTIFICATION': 'delivered',
+        'ATTEMPTEDDELIVERYNOTIFICATION': 'attempted_delivery',
         'CANCELLEDNOTIFICATION': 'cancelled',
         'CANCELEDNOTIFICATION': 'cancelled',
-        'RTONOTIFICATION': 'rto',
     };
 
     // Prefer orderStatus, fallback to notificationType
