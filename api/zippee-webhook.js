@@ -15,98 +15,127 @@ module.exports = async (req, res) => {
     console.log(JSON.stringify(req.body, null, 2));
 
     try {
-        // 2. Extract fields from this specific request
+        // 2. Extract fields from Zippee's actual webhook payload
+        //    Ref: https://www.zippee.delivery/api-docs (Webhooks → Shipment Status)
         const body = req.body || {};
-        const phoneNumber = body.phoneNumber;
-        const customerName = body.customerName;
-        const orderNo = body.orderNo;
-        const orderStatus = body.orderStatus;
-        const notificationType = body.notificationType;
+
+        // Zippee sends these top-level fields:
+        const customerPhone = body.customer_phone;
+        const customerName  = body.customer_name;
+        const awbNumber     = body.awb_number;
+        const shipmentStatus = body.shipment_status;
+        const riderName     = body.rider_name;
+        const riderPhone    = body.rider_phone;
+
+        // Extract order_code from the orders array (first order)
+        const orderCode = body.orders?.[0]?.order_code;
 
         // Validate required fields
-        if (!phoneNumber) {
-            console.error(`[${requestId}] Error: Missing phoneNumber.`);
-            return res.status(400).json({ error: 'Missing phoneNumber', requestId });
+        if (!customerPhone) {
+            console.error(`[${requestId}] Error: Missing customer_phone. Full body keys: ${Object.keys(body).join(', ')}`);
+            return res.status(400).json({ error: 'Missing customer_phone', bodyKeys: Object.keys(body), requestId });
         }
 
-        if (!orderNo) {
-            console.error(`[${requestId}] Error: Missing orderNo.`);
-            return res.status(400).json({ error: 'Missing orderNo', requestId });
+        if (!awbNumber) {
+            console.error(`[${requestId}] Error: Missing awb_number.`);
+            return res.status(400).json({ error: 'Missing awb_number', requestId });
         }
 
-        // 3. Normalize status from orderStatus or notificationType
-        const normalizedStatus = normalizeStatus(orderStatus, notificationType);
+        if (!shipmentStatus) {
+            console.error(`[${requestId}] Error: Missing shipment_status.`);
+            return res.status(400).json({ error: 'Missing shipment_status', requestId });
+        }
 
-        // 4. Only send WhatsApp for the 5 enabled statuses
+        // 3. Only send WhatsApp for important statuses
+        //    Zippee status codes: READY, ALLOCATION_PENDING, PICKUP_PENDING,
+        //    PICKUP_IN_PROGRESS, PICKUP_COMPLETED, OUT_FOR_DELIVERY, REACHED_GATE,
+        //    DELIVERY_IN_PROGRESS, DELIVERY_ATTEMPTED, DELIVERED, CANCELLED, RTO,
+        //    OUT_FOR_PICKUP, PICKUP_ATTEMPTED, REACHED_PICKUP, REACHED_DELIVERY,
+        //    PARTIALLY_DELIVERED
+        const status = shipmentStatus.toUpperCase().trim();
+
         const importantStatuses = {
-            'created': 'has been created successfully! We\'re getting it ready for you 📦',
-            'picked_up': 'has been picked up by our delivery partner! It\'s on its way 🚚',
-            'delivered': 'has been delivered successfully! 🎉',
-            'attempted_delivery': 'delivery was attempted but couldn\'t be completed. Our team will try again soon 🔔',
-            'cancelled': 'has been cancelled. Please reach out to us for any queries ❌',
+            'PICKUP_COMPLETED':    'has been picked up and is being prepared for delivery! 📦',
+            'OUT_FOR_DELIVERY':    'is out for delivery! Your rider is on the way 🚚',
+            'DELIVERED':           'has been delivered successfully! 🎉',
+            'DELIVERY_ATTEMPTED':  'delivery was attempted but couldn\'t be completed. Our team will try again soon 🔔',
+            'CANCELLED':           'has been cancelled. Please reach out to us for any queries ❌',
+            'RTO':                 'could not be delivered and is being returned. Please reach out to us for assistance 🔄',
+            'PARTIALLY_DELIVERED': 'has been partially delivered. Some items could not be delivered 📋',
         };
 
-        if (!importantStatuses[normalizedStatus]) {
-            console.log(`[${requestId}] Skipping non-important status: "${normalizedStatus}" (orderStatus="${orderStatus}", notificationType="${notificationType}")`);
+        if (!importantStatuses[status]) {
+            console.log(`[${requestId}] Skipping non-important status: "${status}" for AWB: ${awbNumber}`);
             return res.status(200).json({
                 success: true,
                 message: 'Status not important enough for WhatsApp notification',
-                status: normalizedStatus,
+                shipment_status: status,
+                awb_number: awbNumber,
                 requestId
             });
         }
 
-        const statusText = importantStatuses[normalizedStatus];
+        const statusText = importantStatuses[status];
 
-        // 5. Clean and Format Phone Number (+91 for India)
-        let formattedPhone = phoneNumber.toString().replace(/\D/g, '');
+        // 4. Clean and Format Phone Number (+91 for India)
+        let formattedPhone = customerPhone.toString().replace(/\D/g, '');
 
         if (formattedPhone.startsWith('0')) {
             formattedPhone = formattedPhone.slice(1);
         }
 
+        // Handle numbers that already have country code
         if (formattedPhone.length === 12 && formattedPhone.startsWith('91')) {
             formattedPhone = formattedPhone.slice(2);
         }
 
         if (formattedPhone.length !== 10) {
-            console.error(`[${requestId}] Invalid phone format: raw="${phoneNumber}" cleaned="${formattedPhone}"`);
+            console.error(`[${requestId}] Invalid phone format: raw="${customerPhone}" cleaned="${formattedPhone}"`);
             return res.status(400).json({
                 error: 'Invalid phone number format',
-                received: phoneNumber,
+                received: customerPhone,
                 requestId
             });
         }
 
         formattedPhone = `+91${formattedPhone}`;
 
-        // 6. Prepare AiSensy Payload
+        // 5. Prepare AiSensy Payload
         const name = String(customerName || 'Customer');
-        const orderNumber = String(orderNo);
+        // Use order_code if available, otherwise fall back to AWB number
+        const trackingReference = String(orderCode || awbNumber);
+
+        const apiKey = process.env.AISENSY_API_KEY;
+        if (!apiKey) {
+            console.error(`[${requestId}] Error: AISENSY_API_KEY environment variable is not set.`);
+            return res.status(500).json({ error: 'Server configuration error: missing API key', requestId });
+        }
 
         const aisensyData = {
-            apiKey: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4NDdiZDI5OGI0YWI1MGMwN2RiYzk4NiIsIm5hbWUiOiJTbGFwcGluIEZvb2RzIFB2dCBMdGQiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjg0N2JkMjk4YjRhYjUwYzA3ZGJjOTgxIiwiYWN0aXZlUGxhbiI6IkJBU0lDX1lFQVJMWSIsImlhdCI6MTc3Njc4OTQ4NH0.ABs5XchvFj5U1D4PUvMK2lGvJuOj_c340Bl7oMy-WMc",
+            apiKey: apiKey,
             campaignName: "delivery_tracking",
             destination: formattedPhone,
             userName: name,
             templateParams: [
-                name,           // Body {{1}} - Customer Name
-                orderNumber,    // Body {{2}} - Order Number
-                statusText,     // Body {{3}} - Status text
-                orderNumber     // Button URL {{1}} → ?orderNumber=<orderNo>
+                name,               // Body {{1}} - Customer Name
+                trackingReference,  // Body {{2}} - Order/AWB Number
+                statusText,         // Body {{3}} - Status text
+                trackingReference   // Button URL {{1}} → ?orderNumber=<ref>
             ]
         };
 
-        console.log(`[${requestId}] Sending to ${formattedPhone}: Order ${orderNumber} ${statusText} for ${name}`);
+        console.log(`[${requestId}] Sending to ${formattedPhone}: AWB ${awbNumber} (Order: ${orderCode || 'N/A'}) → ${status} for ${name}`);
 
-        // 7. Fire to AiSensy
+        // 6. Fire to AiSensy
         const response = await axios.post('https://backend.aisensy.com/campaign/t1/api/v2', aisensyData);
 
         console.log(`[${requestId}] AiSensy Response:`, response.data);
         return res.status(200).json({
             success: true,
             message: 'Message queued',
-            status: normalizedStatus,
+            shipment_status: status,
+            awb_number: awbNumber,
+            order_code: orderCode || null,
             requestId
         });
 
@@ -119,39 +148,3 @@ module.exports = async (req, res) => {
         });
     }
 };
-
-/**
- * Normalize Zippee's orderStatus and notificationType into a consistent key.
- * Only the 5 enabled events are mapped:
- *   Order Created, Order Pickedup, Order Delivered,
- *   Order Attempted Delivery, Order Cancelled.
- */
-function normalizeStatus(orderStatus, notificationType) {
-    const raw = (orderStatus || '').toString().toUpperCase().trim();
-    const notif = (notificationType || '').toString().toUpperCase().trim();
-
-    // Map from Zippee's orderStatus values to our normalized keys
-    const statusMap = {
-        'CREATED': 'created',
-        'PICKEDUP': 'picked_up',
-        'PICKED_UP': 'picked_up',
-        'DELIVERED': 'delivered',
-        'ATTEMPTEDDELIVERY': 'attempted_delivery',
-        'ATTEMPTED_DELIVERY': 'attempted_delivery',
-        'CANCELLED': 'cancelled',
-        'CANCELED': 'cancelled',
-    };
-
-    // Map from Zippee's notificationType values (pattern: <STATUS>NOTIFICATION)
-    const notifMap = {
-        'CREATEDNOTIFICATION': 'created',
-        'PICKEDUPNOTIFICATION': 'picked_up',
-        'DELIVEREDNOTIFICATION': 'delivered',
-        'ATTEMPTEDDELIVERYNOTIFICATION': 'attempted_delivery',
-        'CANCELLEDNOTIFICATION': 'cancelled',
-        'CANCELEDNOTIFICATION': 'cancelled',
-    };
-
-    // Prefer orderStatus, fallback to notificationType
-    return statusMap[raw] || notifMap[notif] || raw.toLowerCase() || 'unknown';
-}
