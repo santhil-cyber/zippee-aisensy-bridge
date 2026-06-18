@@ -110,14 +110,14 @@ module.exports = async (req, res) => {
 
         const aisensyData = {
             apiKey: apiKey,
-            campaignName: "delivery_tracking",
+            campaignName: "delivery_tracking_v2",
             destination: formattedPhone,
             userName: name,
             templateParams: [
                 name,               // Body {{1}} - Customer Name
-                trackingReference,  // Body {{2}} - Order/AWB Number
+                orderCode || awbNumber, // Body {{2}} - Order Number
                 statusText,         // Body {{3}} - Status text
-                trackingReference   // Button URL {{1}} → ?orderNumber=<ref>
+                awbNumber           // Button URL {{1}} → ?awb=<ref>
             ]
         };
 
