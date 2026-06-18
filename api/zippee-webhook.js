@@ -116,9 +116,12 @@ module.exports = async (req, res) => {
             templateParams: [
                 name,               // Body {{1}} - Customer Name
                 orderCode || awbNumber, // Body {{2}} - Order Number
-                statusText,         // Body {{3}} - Status text
-                awbNumber           // Body {{4}} - AWB Number
-            ]
+                statusText          // Body {{3}} - Status text
+            ],
+            // Button URL dynamic parameter (button {{1}} = AWB number for tracking link)
+            buttonParams: {
+                button_1: awbNumber
+            }
         };
 
         console.log(`[${requestId}] Sending to ${formattedPhone}: AWB ${awbNumber} (Order: ${orderCode || 'N/A'}) → ${status} for ${name}`);
