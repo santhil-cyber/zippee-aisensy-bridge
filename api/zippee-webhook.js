@@ -114,16 +114,15 @@ module.exports = async (req, res) => {
             destination: formattedPhone,
             userName: name,
             templateParams: [
-                name,               // Body {{1}} - Customer Name
-                orderCode || awbNumber, // Body {{2}} - Order Number
-                statusText          // Body {{3}} - Status text
-            ],
-            // Button URL dynamic parameter (button {{1}} = AWB number for tracking link)
-            buttonParams: {
-                button_1: awbNumber
-            }
+                String(name),                          // Body {{1}} - Customer Name
+                String(orderCode || awbNumber),         // Body {{2}} - Order Number
+                String(statusText),                     // Body {{3}} - Status text
+                String(awbNumber)                       // Button URL {{1}} - AWB for tracking link
+            ]
         };
 
+        console.log(`[${requestId}] === FULL AISENSY PAYLOAD ===`);
+        console.log(JSON.stringify(aisensyData, null, 2));
         console.log(`[${requestId}] Sending to ${formattedPhone}: AWB ${awbNumber} (Order: ${orderCode || 'N/A'}) → ${status} for ${name}`);
 
         // 6. Fire to AiSensy
