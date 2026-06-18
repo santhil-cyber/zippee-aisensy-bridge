@@ -116,8 +116,7 @@ module.exports = async (req, res) => {
             templateParams: [
                 name,               // Body {{1}} - Customer Name
                 orderCode || awbNumber, // Body {{2}} - Order Number
-                statusText,         // Body {{3}} - Status text
-                awbNumber           // Button URL {{1}} → ?awb=<ref>
+                statusText          // Body {{3}} - Status text
             ]
         };
 
