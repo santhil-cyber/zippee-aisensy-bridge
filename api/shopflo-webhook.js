@@ -5,6 +5,7 @@
  */
 
 const axios = require('axios');
+const { saveLead, markConverted } = require('./lib/db');
 
 const AISENSY_API_KEY = process.env.AISENSY_API_KEY || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4NDdiZDI5OGI0YWI1MGMwN2RiYzk4NiIsIm5hbWUiOiJTbGFwcGluIEZvb2RzIFB2dCBMdGQiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjg0N2JkMjk4YjRhYjUwYzA3ZGJjOTgxIiwiYWN0aXZlUGxhbiI6IkJBU0lDX1lFQVJMWSIsImlhdCI6MTc4MTc4Nzc0N30.sffbnU3Z9cxUrTQYWQv-mh2vfm_ChWZ1iUDaaWATtE0";
 const AISENSY_URL = 'https://backend.aisensy.com/campaign/t1/api/v2';
@@ -20,7 +21,7 @@ function formatPhoneNumber(phone) {
 }
 
 module.exports = async (req, res) => {
-  // Handle GET or Test Pings
+  // Handle GET or Health Check Pings
   if (req.method === 'GET') {
     return res.status(200).send('Shopflo AiSensy Webhook is Live!');
   }
@@ -48,8 +49,18 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, message: 'No phone number in payload' });
     }
 
-    // 1. Order Completed / Buyer -> Suppress from Retargeting
+    // 1. Order Completed / Buyer -> Mark Converted in DB and Tag in AiSensy
     if (eventType.includes('order_completed') || eventType.includes('payment_completed')) {
+      console.log(`[Shopflo Webhook] Order completed for ${name} (${phone}). Marking CONVERTED.`);
+      
+      // Update database to stop 2-week recurring retargeting
+      try {
+        await markConverted(phone);
+      } catch (dbErr) {
+        console.warn('[DB Error marking converted]:', dbErr.message);
+      }
+
+      // Sync conversion tag to AiSensy
       await axios.post(AISENSY_URL, {
         apiKey: AISENSY_API_KEY,
         campaignName: 'shopflo_conversion_sync',
@@ -62,11 +73,26 @@ module.exports = async (req, res) => {
       return res.status(200).json({ success: true, status: 'customer_marked_as_converted' });
     }
 
-    // 2. Abandoned Cart / Checkout -> Sync to AiSensy with Retargeting Tag
+    // 2. Abandoned Cart / Checkout -> Save to DB for 2-Week Drip & Send Initial Alert
     const rawItems = body.items || body.cart?.items || body.line_items || [];
     const items = Array.isArray(rawItems) ? rawItems.map(i => i.title || i.name || 'Product').slice(0, 3).join(', ') : '';
     const checkoutUrl = body.checkout_url || body.checkoutUrl || 'https://proteinpantry.in';
 
+    // Enroll in Redis 2-week recurring retargeting database
+    try {
+      await saveLead({
+        phone,
+        name,
+        email,
+        city,
+        cart_items: items,
+        checkout_url: checkoutUrl,
+      });
+    } catch (dbErr) {
+      console.warn('[DB Error saving lead]:', dbErr.message);
+    }
+
+    // Send immediate/initial abandoned cart WhatsApp notification & tag in AiSensy
     await axios.post(AISENSY_URL, {
       apiKey: AISENSY_API_KEY,
       campaignName: 'shopflo_abandoned_cart',
@@ -82,7 +108,7 @@ module.exports = async (req, res) => {
       templateParams: [String(name), String(items || 'your selected items'), String(checkoutUrl)]
     }).catch(err => console.log('AiSensy sync notice:', err.response?.data || err.message));
 
-    return res.status(200).json({ success: true, message: 'Cart abandonment captured and synced to AiSensy' });
+    return res.status(200).json({ success: true, message: 'Cart abandonment captured, enrolled in 2-week drip, and synced to AiSensy' });
 
   } catch (error) {
     console.error('[Shopflo Webhook Error]:', error);
