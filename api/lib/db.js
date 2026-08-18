@@ -129,10 +129,93 @@ async function updateLeadProgress(phone, { cycleCount, lastSentAt }) {
   return existing;
 }
 
+/**
+ * Cache Shopify order metadata for logistics webhook lookup
+ */
+async function saveOrder(orderData) {
+  const redis = getRedis();
+  if (!redis || !orderData) return null;
+
+  try {
+    const { orderId, orderNumber, shopifyId, customerName, customerPhone, city } = orderData;
+    const payload = {
+      orderId: orderId || '',
+      orderNumber: orderNumber ? String(orderNumber) : '',
+      shopifyId: shopifyId ? String(shopifyId) : '',
+      customerName: customerName || 'Customer',
+      customerPhone: customerPhone || '',
+      city: city || '',
+      saved_at: new Date().toISOString()
+    };
+
+    const ttlSeconds = 60 * 60 * 24 * 30; // 30 days retention
+
+    // Save with multiple keys to ensure exact match regardless of format (#1042, 1042, PPY1042)
+    const keys = new Set();
+    if (orderId) {
+      keys.add(`order:${orderId.trim()}`);
+      keys.add(`order:${orderId.replace(/^#/, '').trim()}`);
+      keys.add(`order:${orderId.replace(/^#/, '').trim().toLowerCase()}`);
+    }
+    if (orderNumber) {
+      keys.add(`order:${String(orderNumber).trim()}`);
+      keys.add(`order:#${String(orderNumber).trim()}`);
+    }
+    if (shopifyId) {
+      keys.add(`order:${String(shopifyId).trim()}`);
+    }
+
+    for (const k of keys) {
+      await redis.set(k, payload, { ex: ttlSeconds });
+    }
+
+    console.log(`[DB] Cached order info for ${orderId || orderNumber} (${payload.customerName} - ${payload.customerPhone})`);
+    return payload;
+  } catch (err) {
+    console.warn('[DB Error saving order]:', err.message);
+    return null;
+  }
+}
+
+/**
+ * Retrieve cached Shopify order metadata by any order ID / number identifier
+ */
+async function getOrder(orderIdentifier) {
+  const redis = getRedis();
+  if (!redis || !orderIdentifier) return null;
+
+  try {
+    const cleanId = String(orderIdentifier).trim();
+    const cleanNoHash = cleanId.replace(/^#/, '');
+
+    const candidates = [
+      `order:${cleanId}`,
+      `order:${cleanNoHash}`,
+      `order:#${cleanNoHash}`,
+      `order:${cleanNoHash.toLowerCase()}`,
+      `order:${cleanId.toLowerCase()}`
+    ];
+
+    for (const key of candidates) {
+      const data = await redis.get(key);
+      if (data && (data.customerPhone || data.customer_phone)) {
+        return data;
+      }
+    }
+    return null;
+  } catch (err) {
+    console.warn(`[DB Error retrieving order ${orderIdentifier}]:`, err.message);
+    return null;
+  }
+}
+
 module.exports = {
   saveLead,
   markConverted,
   getActiveLeads,
   updateLeadProgress,
+  saveOrder,
+  getOrder,
   getRedis,
 };
+

@@ -1,5 +1,6 @@
 const axios = require('axios');
 const crypto = require('crypto');
+const { saveOrder } = require('./lib/db');
 
 /**
  * Shopify / Shopflo → AiSensy Order Confirmation Webhook
@@ -109,10 +110,25 @@ module.exports = async (req, res) => {
 
         formattedPhone = `+91${formattedPhone}`;
 
+        // ─── Cache Order in DB for Logistics Webhook Lookup ─────────
+        try {
+            await saveOrder({
+                orderId: order.name || orderId,
+                orderNumber: order.order_number,
+                shopifyId: order.id,
+                customerName: firstName,
+                customerPhone: formattedPhone,
+                city: city
+            });
+        } catch (dbErr) {
+            console.warn(`[${requestId}] Non-critical: Failed to cache order in DB:`, dbErr.message);
+        }
+
         // ─── Prepare AiSensy payload ─────────────────────────────────
         const name = String(firstName);
         const logisticsPartner = getLogisticsPartner(city);
         const deliveryTime = getDeliveryTime(city);
+
 
         const apiKey = process.env.AISENSY_API_KEY
             || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4NDdiZDI5OGI0YWI1MGMwN2RiYzk4NiIsIm5hbWUiOiJTbGFwcGluIEZvb2RzIFB2dCBMdGQiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjg0N2JkMjk4YjRhYjUwYzA3ZGJjOTgxIiwiYWN0aXZlUGxhbiI6IkJBU0lDX1lFQVJMWSIsImlhdCI6MTc4MTc4Nzc0N30.sffbnU3Z9cxUrTQYWQv-mh2vfm_ChWZ1iUDaaWATtE0";
