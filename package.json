@@ -4,7 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node test/test-recovery.js",
+    "simulate": "node scripts/simulate-flow.js",
+    "backfill:dry": "node scripts/backfill-csv.js --dry-run",
+    "backfill:live": "node scripts/backfill-csv.js"
   },
   "keywords": [],
   "author": "",

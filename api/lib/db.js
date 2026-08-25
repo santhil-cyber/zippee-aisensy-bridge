@@ -1,7 +1,7 @@
 /**
  * Database Module — Upstash Redis / Vercel KV
  * --------------------------------------------
- * Manages active retargeting leads and their bi-weekly lifecycle state.
+ * Manages active retargeting leads and their bi-weekly / multi-step lifecycle state.
  */
 
 const { Redis } = require('@upstash/redis');
@@ -11,8 +11,19 @@ let redisClient = null;
 function getRedis() {
   if (redisClient) return redisClient;
 
-  const url = process.env.UPSTASH_REDIS_REST_URL || process.env.KV_REST_API_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN || process.env.KV_REST_API_TOKEN;
+  const url = process.env.UPSTASH_REDIS_REST_URL
+    || process.env.KV_REST_API_URL
+    || process.env.REDIS_REST_API_URL
+    || process.env.STORAGE_REST_API_URL
+    || process.env.STORAGE_URL
+    || process.env.REDIS_URL;
+
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN
+    || process.env.KV_REST_API_TOKEN
+    || process.env.REDIS_REST_API_TOKEN
+    || process.env.STORAGE_REST_API_TOKEN
+    || process.env.STORAGE_TOKEN
+    || process.env.REDIS_TOKEN;
 
   if (!url || !token) {
     console.warn('[DB] Upstash Redis credentials not found in environment variables.');
@@ -28,7 +39,7 @@ function getRedis() {
  */
 async function saveLead(lead) {
   const redis = getRedis();
-  if (!redis) return null;
+  if (!redis || !lead?.phone) return null;
 
   const phone = lead.phone;
   const key = `lead:${phone}`;
@@ -44,22 +55,44 @@ async function saveLead(lead) {
 
   const payload = {
     phone,
-    name: lead.name || 'there',
-    email: lead.email || '',
-    city: lead.city || '',
-    cart_items: lead.cart_items || '',
-    checkout_url: lead.checkout_url || '',
+    name: lead.name || existing?.name || 'Customer',
+    email: lead.email || existing?.email || '',
+    city: lead.city || existing?.city || '',
+    cart_items: lead.cart_items || existing?.cart_items || '',
+    checkout_url: lead.checkout_url || existing?.checkout_url || 'https://proteinpantry.in',
     status: 'ACTIVE',
+    tier: lead.tier || existing?.tier || 'TIER_1_CHECKOUT_ABANDON',
+    current_nudge: lead.current_nudge !== undefined ? lead.current_nudge : (existing?.current_nudge || 0),
     enrolled_at: existing?.enrolled_at || now,
-    last_sent_at: existing?.last_sent_at || now,
+    last_sent_at: existing?.last_sent_at || null,
     cycle_count: existing?.cycle_count || 0,
-    source: 'shopflo_shoppass',
+    source: lead.source || existing?.source || 'shopflo_shoppass',
+    utm_source: lead.utm_source || existing?.utm_source || '',
+    utm_medium: lead.utm_medium || existing?.utm_medium || '',
+    utm_campaign: lead.utm_campaign || existing?.utm_campaign || '',
+    utm_content: lead.utm_content || existing?.utm_content || '',
+    updated_at: now,
   };
 
   await redis.set(key, payload);
   await redis.sadd('set:active_leads', phone);
-  console.log(`[DB] Enrolled lead ${phone} (${payload.name}) for 2-week retargeting cycle.`);
+  console.log(`[DB] Enrolled lead ${phone} (${payload.name}) in ${payload.tier}.`);
   return payload;
+}
+
+/**
+ * Retrieve a specific lead by phone
+ */
+async function getLead(phone) {
+  const redis = getRedis();
+  if (!redis || !phone) return null;
+
+  try {
+    return await redis.get(`lead:${phone}`);
+  } catch (err) {
+    console.warn(`[DB] Error fetching lead ${phone}:`, err.message);
+    return null;
+  }
 }
 
 /**
@@ -80,6 +113,10 @@ async function markConverted(phone) {
 
   await redis.set(key, payload);
   await redis.srem('set:active_leads', phone);
+
+  // NOTE: Queue cleanup (cancelAllMessagesForPhone) is the caller's responsibility.
+  // This avoids a circular dependency between db.js <-> queue.js.
+
   console.log(`[DB] Lead ${phone} marked as CONVERTED. Removed from active retargeting.`);
   return payload;
 }
@@ -107,7 +144,7 @@ async function getActiveLeads() {
 /**
  * Update lead cycle count and timestamp after a campaign message is sent
  */
-async function updateLeadProgress(phone, { cycleCount, lastSentAt }) {
+async function updateLeadProgress(phone, updates = {}) {
   const redis = getRedis();
   if (!redis || !phone) return null;
 
@@ -115,18 +152,18 @@ async function updateLeadProgress(phone, { cycleCount, lastSentAt }) {
   const existing = await redis.get(key);
   if (!existing) return null;
 
-  existing.cycle_count = cycleCount;
-  existing.last_sent_at = lastSentAt || new Date().toISOString();
+  const updated = {
+    ...existing,
+    ...updates,
+    updated_at: new Date().toISOString(),
+  };
 
-  // If reached max cycles (e.g. 3 cycles = 6 weeks), mark completed
-  if (cycleCount >= 3) {
-    existing.status = 'COMPLETED_MAX_CYCLES';
+  if (updates.status && updates.status !== 'ACTIVE') {
     await redis.srem('set:active_leads', phone);
-    console.log(`[DB] Lead ${phone} completed maximum retargeting cycles (3 cycles / 6 weeks).`);
   }
 
-  await redis.set(key, existing);
-  return existing;
+  await redis.set(key, updated);
+  return updated;
 }
 
 /**
@@ -211,6 +248,7 @@ async function getOrder(orderIdentifier) {
 
 module.exports = {
   saveLead,
+  getLead,
   markConverted,
   getActiveLeads,
   updateLeadProgress,
@@ -218,4 +256,3 @@ module.exports = {
   getOrder,
   getRedis,
 };
-
