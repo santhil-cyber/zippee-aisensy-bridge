@@ -72,7 +72,7 @@ assert.strictEqual(tier1Nudge1.delayMs, 30 * 60 * 1000, 'Tier 1 Nudge 1 delay sh
 
 const tier1Nudge2 = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', 2);
 assert.ok(tier1Nudge2, 'Tier 1 Nudge 2 must exist');
-assert.strictEqual(tier1Nudge2.campaignName, 'nudge_2_cart', 'Tier 1 Nudge 2 should use nudge_2_cart template');
+assert.strictEqual(tier1Nudge2.campaignName, 'nudge_2nd_cart', 'Tier 1 Nudge 2 should use nudge_2nd_cart template');
 
 const tier1Nudge3 = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', 3);
 assert.ok(tier1Nudge3, 'Tier 1 Nudge 3 must exist');
@@ -102,12 +102,12 @@ assert.strictEqual(params1[0], 'Sunny', 'Param {{1}} should be customer name');
 assert.strictEqual(params1[1], 'Peanut Butter, Whey', 'Param {{2}} should be cart items');
 console.log('  ✔ nudge_1_cart: 2 params (name, cart_item) — correct');
 
-// nudge_2_cart: 2 params (name, coupon_code) — Pro10 is a template variable
+// nudge_2nd_cart: 2 params (name, coupon_code) — Pro10 is a template variable
 const params2 = tier1Nudge2.getParams(mockLead);
-assert.strictEqual(params2.length, 2, 'nudge_2_cart should have exactly 2 template params');
+assert.strictEqual(params2.length, 2, 'nudge_2nd_cart should have exactly 2 template params');
 assert.strictEqual(params2[0], 'Sunny', 'Param {{1}} should be customer name');
 assert.strictEqual(params2[1], 'Pro10', 'Param {{2}} should be coupon code Pro10');
-console.log('  ✔ nudge_2_cart: 2 params (name, coupon_code Pro10)');
+console.log('  ✔ nudge_2nd_cart: 2 params (name, coupon_code Pro10)');
 
 // nudge_3_cart: 2 params (name, coupon_code) — FREEDEL is a template variable
 const params3 = tier1Nudge3.getParams(mockLead);
@@ -129,7 +129,7 @@ assert.strictEqual(tier2Nudge1.campaignName, 'nudge_1_cart', 'Tier 2 Nudge 1 sho
 
 const tier2Nudge2 = getNudgeConfig('TIER_2_CART_ADDER', 2);
 const tier2Params2 = tier2Nudge2.getParams(mockLead);
-assert.strictEqual(tier2Params2.length, 2, 'Tier 2 Nudge 2 (nudge_2_cart) should have 2 params');
+assert.strictEqual(tier2Params2.length, 2, 'Tier 2 Nudge 2 (nudge_2nd_cart) should have 2 params');
 
 const tier2Nudge3 = getNudgeConfig('TIER_2_CART_ADDER', 3);
 const tier2Params3 = tier2Nudge3.getParams(mockLead);
@@ -140,8 +140,8 @@ console.log('  ✔ Tier 2 template params validated');
 // Tier 3
 const tier3Nudge1 = getNudgeConfig('TIER_3_PRODUCT_BROWSER', 1);
 const tier3Params1 = tier3Nudge1.getParams(mockLead);
-assert.strictEqual(tier3Params1.length, 2, 'Tier 3 Nudge 1 (nudge_2_cart) should have 2 params');
-assert.strictEqual(tier3Nudge1.campaignName, 'nudge_2_cart', 'Tier 3 Nudge 1 should use nudge_2_cart');
+assert.strictEqual(tier3Params1.length, 2, 'Tier 3 Nudge 1 (nudge_2nd_cart) should have 2 params');
+assert.strictEqual(tier3Nudge1.campaignName, 'nudge_2nd_cart', 'Tier 3 Nudge 1 should use nudge_2nd_cart');
 console.log('  ✔ Tier 3 template params validated');
 
 // ── TEST 4: Sending Window & IST Time Management ──

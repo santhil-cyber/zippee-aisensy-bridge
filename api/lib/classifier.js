@@ -72,8 +72,8 @@ const SEQUENCE_CONFIG = {
     {
       nudgeNum: 2,
       delayMs: 4 * 60 * 60 * 1000, // T + 4 hours
-      campaignName: 'nudge_2_cart',
-      fallbackCampaign: null, // nudge_2_cart is approved & live in AiSensy
+      campaignName: 'nudge_2nd_cart',
+      fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'Pro10',
@@ -118,8 +118,8 @@ const SEQUENCE_CONFIG = {
     {
       nudgeNum: 2,
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
-      campaignName: 'nudge_2_cart',
-      fallbackCampaign: null, // nudge_2_cart is approved & live in AiSensy
+      campaignName: 'nudge_2nd_cart',
+      fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'Pro10',
@@ -142,8 +142,8 @@ const SEQUENCE_CONFIG = {
     {
       nudgeNum: 1,
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
-      campaignName: 'nudge_2_cart',
-      fallbackCampaign: null, // nudge_2_cart is approved & live in AiSensy
+      campaignName: 'nudge_2nd_cart',
+      fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'Pro10',

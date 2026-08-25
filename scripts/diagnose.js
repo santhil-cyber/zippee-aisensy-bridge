@@ -221,7 +221,7 @@ async function runDiagnostics() {
   }
 
   // Check specific campaign stats
-  const campaigns = ['nudge_1_cart', 'nudge_2_cart', 'nudge_3_cart', 'nudge_4_cart', '1st_nudge', 'nudge_2', 'shopflo_abandoned_cart'];
+  const campaigns = ['nudge_1_cart', 'nudge_2nd_cart', 'nudge_3_cart', 'nudge_4_cart', '1st_nudge', 'nudge_2', 'shopflo_abandoned_cart'];
   console.log('\n   Campaign-level stats:');
   for (const campaign of campaigns) {
     const stats = await redis.hgetall(`analytics:campaign:${campaign}`);
@@ -237,7 +237,7 @@ async function runDiagnostics() {
 
   const templateTests = [
     { campaign: 'nudge_1_cart', params: ['Test', 'Peanut Butter'] },
-    { campaign: 'nudge_2_cart', params: ['Test', 'Pro10'] },
+    { campaign: 'nudge_2nd_cart', params: ['Test', 'Pro10'] },
     { campaign: 'nudge_3_cart', params: ['Test', 'FREEDEL'] },
     { campaign: 'nudge_4_cart', params: ['Test'] },
     { campaign: '1st_nudge',   params: ['Test', 'items'] },  // fallback for nudge_1_cart

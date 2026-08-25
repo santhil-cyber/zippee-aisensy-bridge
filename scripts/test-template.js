@@ -6,13 +6,13 @@
  *
  * Templates & their param counts:
  *   nudge_1_cart: 2 params (name, cart_item)
- *   nudge_2_cart: 1 param  (name) — coupon Pro10 hardcoded in template
- *   nudge_3_cart: 1 param  (name) — FREEDEL code hardcoded in template
+ *   nudge_2nd_cart: 2 params (name, coupon_code) — Pro10
+ *   nudge_3_cart: 2 params (name, coupon_code) — FREEDEL
  *   nudge_4_cart: 1 param  (name) — scarcity message hardcoded in template
  *
  * Usage:
  *   node scripts/test-template.js --phone +919XXXXXXXXX --campaign nudge_1_cart
- *   node scripts/test-template.js --phone +919XXXXXXXXX --campaign nudge_2_cart
+ *   node scripts/test-template.js --phone +919XXXXXXXXX --campaign nudge_2nd_cart
  */
 
 const axios = require('axios');
@@ -22,7 +22,7 @@ const AISENSY_URL = 'https://backend.aisensy.com/campaign/t1/api/v2';
 
 const args = process.argv.slice(2);
 let phone = '';
-let campaignName = 'nudge_2_cart';
+let campaignName = 'nudge_2nd_cart';
 let userName = 'Sunny';
 let cartItem = 'Chaap';
 
@@ -55,6 +55,7 @@ function getTemplateParams(campaign, name, item) {
       // {{1}} = Name, {{2}} = Cart Item
       return [String(name), String(item)];
 
+    case 'nudge_2nd_cart':
     case 'nudge_2_cart':
       // {{1}} = Name, {{2}} = Coupon code
       return [String(name), 'Pro10'];
