@@ -139,9 +139,15 @@ module.exports = async (req, res) => {
       }
     }
 
+    // Items that are packaging/accessories, not real SKUs — exclude from messages
+    const NON_SKU_ITEMS = ['insulated bag', 'insulated bag - large', 'insulated bag - small', 'ice pack', 'packaging'];
     const rawItems = body.items || body.cart?.items || body.line_items || [];
     const items = Array.isArray(rawItems)
-      ? rawItems.map(i => i.title || i.name || 'Product').slice(0, 3).join(', ')
+      ? rawItems
+          .map(i => i.title || i.name || 'Product')
+          .filter(name => !NON_SKU_ITEMS.includes(name.toLowerCase().trim()))
+          .slice(0, 3)
+          .join(', ')
       : (typeof rawItems === 'string' ? rawItems : '');
     const checkoutUrl = body.checkout_url
       || body.checkoutUrl
