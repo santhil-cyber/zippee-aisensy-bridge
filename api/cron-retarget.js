@@ -74,6 +74,7 @@ module.exports = async (req, res) => {
       dispatched: 0,
       converted: 0,
       skipped_converted: 0,
+      skipped_returning: 0,
       errors: 0,
     };
 
@@ -121,6 +122,49 @@ module.exports = async (req, res) => {
         await trackCampaignEvent(campaignName, 'converted', { tier, nudgeNum });
         results.converted++;
         continue;
+      }
+
+      // ── Step B2: Skip coupon nudges for returning customers ──
+      // Nudges with skipIfReturning (Pro10, FREEDEL) are wasteful for customers
+      // who have ordered before — they've likely already used these coupons.
+      const currentNudgeConfig = getNudgeConfig(tier, nudgeNum);
+      if (currentNudgeConfig?.skipIfReturning) {
+        // Check for ANY past order (no sinceDate filter)
+        const isReturningCustomer = await hasPlacedOrder(phone, lead?.email, null);
+        if (isReturningCustomer) {
+          console.log(`[Cron] 🔄 Returning customer ${phone} — skipping coupon nudge ${campaignName} (Nudge ${nudgeNum}).`);
+          await removeMessage(memberKey);
+          await trackCampaignEvent(campaignName, 'skipped_returning', { tier, nudgeNum });
+          results.skipped_returning = (results.skipped_returning || 0) + 1;
+
+          // Find and enqueue the next non-coupon nudge in the sequence
+          const maxNudges = getMaxNudgesForTier(tier);
+          let nextEligible = nudgeNum + 1;
+          while (nextEligible <= maxNudges) {
+            const nextConfig = getNudgeConfig(tier, nextEligible);
+            if (!nextConfig?.skipIfReturning) break; // Found a non-coupon nudge
+            nextEligible++;
+          }
+
+          if (nextEligible <= maxNudges && lead) {
+            const nextConfig = getNudgeConfig(tier, nextEligible);
+            const nextParams = nextConfig.getParams(lead);
+            await enqueueMessage(phone, tier, nextEligible, nextConfig.delayMs, {
+              campaignName: nextConfig.campaignName,
+              fallbackCampaign: nextConfig.fallbackCampaign,
+              templateParams: nextParams,
+              tags: nextConfig.tags,
+              attributes: { Tier: tier, Nudge_Number: String(nextEligible) },
+            });
+            console.log(`[Cron] ⏭️  Skipped to Nudge ${nextEligible} (${nextConfig.campaignName}) for returning customer ${phone}.`);
+          } else {
+            // All remaining nudges are coupon-based — complete the sequence
+            await updateLeadProgress(phone, { status: 'COMPLETED_TIER_SEQUENCE' });
+            console.log(`[Cron] Lead ${phone} — no non-coupon nudges remaining. Sequence complete.`);
+          }
+
+          continue;
+        }
       }
 
       // ── Step C: Dispatch WhatsApp Campaign via AiSensy ──
@@ -212,7 +256,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    console.log(`[Cron Finished]: Evaluated: ${results.evaluated}, Dispatched: ${results.dispatched}, Converted: ${results.converted}, Errors: ${results.errors}`);
+    console.log(`[Cron Finished]: Evaluated: ${results.evaluated}, Dispatched: ${results.dispatched}, Converted: ${results.converted}, Skipped (returning): ${results.skipped_returning}, Errors: ${results.errors}`);
 
     return res.status(200).json({
       success: true,

@@ -74,6 +74,7 @@ const SEQUENCE_CONFIG = {
       delayMs: 4 * 60 * 60 * 1000, // T + 4 hours
       campaignName: 'nudge_2nd_cart',
       fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
+      skipIfReturning: true, // Pro10 coupon — skip for returning customers
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'Pro10',
@@ -85,6 +86,7 @@ const SEQUENCE_CONFIG = {
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
       campaignName: 'nudge_3_cart',
       fallbackCampaign: null, // nudge_3_cart is approved & live in AiSensy
+      skipIfReturning: true, // FREEDEL coupon — skip for returning customers
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'FREEDEL',
@@ -120,6 +122,7 @@ const SEQUENCE_CONFIG = {
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
       campaignName: 'nudge_2nd_cart',
       fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
+      skipIfReturning: true, // Pro10 coupon — skip for returning customers
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'Pro10',
@@ -144,6 +147,7 @@ const SEQUENCE_CONFIG = {
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
       campaignName: 'nudge_2nd_cart',
       fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
+      skipIfReturning: true, // Pro10 coupon — skip for returning customers
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'Pro10',

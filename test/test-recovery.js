@@ -179,6 +179,51 @@ for (const tierKey of allTiers) {
 }
 console.log('  ✔ All tier/nudge configs have valid campaign, params, and tags');
 
+// ── TEST 6: Skip Coupon Nudges for Returning Customers ──
+console.log('\nTest 6: skipIfReturning Flag on Coupon Nudges');
+
+// Coupon nudges must have skipIfReturning: true
+const t1n2Skip = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', 2);
+assert.strictEqual(t1n2Skip.skipIfReturning, true, 'Tier 1 Nudge 2 (Pro10) must have skipIfReturning');
+
+const t1n3Skip = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', 3);
+assert.strictEqual(t1n3Skip.skipIfReturning, true, 'Tier 1 Nudge 3 (FREEDEL) must have skipIfReturning');
+
+const t2n2Skip = getNudgeConfig('TIER_2_CART_ADDER', 2);
+assert.strictEqual(t2n2Skip.skipIfReturning, true, 'Tier 2 Nudge 2 (Pro10) must have skipIfReturning');
+
+const t3n1Skip = getNudgeConfig('TIER_3_PRODUCT_BROWSER', 1);
+assert.strictEqual(t3n1Skip.skipIfReturning, true, 'Tier 3 Nudge 1 (Pro10) must have skipIfReturning');
+
+console.log('  ✔ All coupon nudges have skipIfReturning: true');
+
+// Non-coupon nudges must NOT have skipIfReturning
+const t1n1NoSkip = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', 1);
+assert.ok(!t1n1NoSkip.skipIfReturning, 'Tier 1 Nudge 1 (cart reminder) should NOT skip for returning');
+
+const t1n4NoSkip = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', 4);
+assert.ok(!t1n4NoSkip.skipIfReturning, 'Tier 1 Nudge 4 (scarcity) should NOT skip for returning');
+
+const t2n1NoSkip = getNudgeConfig('TIER_2_CART_ADDER', 1);
+assert.ok(!t2n1NoSkip.skipIfReturning, 'Tier 2 Nudge 1 (cart reminder) should NOT skip for returning');
+
+const t2n3NoSkip = getNudgeConfig('TIER_2_CART_ADDER', 3);
+assert.ok(!t2n3NoSkip.skipIfReturning, 'Tier 2 Nudge 3 (scarcity) should NOT skip for returning');
+
+console.log('  ✔ Non-coupon nudges do NOT have skipIfReturning');
+
+// Verify skip-ahead path: Tier 1 returning customer should go Nudge1 → skip 2,3 → Nudge4
+const t1MaxNudges = getMaxNudgesForTier('TIER_1_CHECKOUT_ABANDON');
+let nextEligible = 2; // Start from nudge 2 (first coupon)
+while (nextEligible <= t1MaxNudges) {
+  const cfg = getNudgeConfig('TIER_1_CHECKOUT_ABANDON', nextEligible);
+  if (!cfg.skipIfReturning) break;
+  nextEligible++;
+}
+assert.strictEqual(nextEligible, 4, 'Returning customer in Tier 1 should skip nudges 2,3 and land on nudge 4 (scarcity)');
+console.log('  ✔ Skip-ahead path: Tier 1 → Nudge 1 → skip 2,3 → Nudge 4 (scarcity)');
+
 console.log('\n=============================================');
 console.log('🎉 ALL UNIT TESTS PASSED SUCCESSFULLY!');
 console.log('=============================================');
+
