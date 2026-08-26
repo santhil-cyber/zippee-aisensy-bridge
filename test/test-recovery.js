@@ -102,12 +102,12 @@ assert.strictEqual(params1[0], 'Sunny', 'Param {{1}} should be customer name');
 assert.strictEqual(params1[1], 'Peanut Butter, Whey', 'Param {{2}} should be cart items');
 console.log('  ✔ nudge_1_cart: 2 params (name, cart_item) — correct');
 
-// nudge_2nd_cart: 2 params (name, coupon_code) — Pro10 is a template variable
+// nudge_2nd_cart: 2 params (name, coupon_code) — PRO10 is a template variable
 const params2 = tier1Nudge2.getParams(mockLead);
 assert.strictEqual(params2.length, 2, 'nudge_2nd_cart should have exactly 2 template params');
 assert.strictEqual(params2[0], 'Sunny', 'Param {{1}} should be customer name');
-assert.strictEqual(params2[1], 'Pro10', 'Param {{2}} should be coupon code Pro10');
-console.log('  ✔ nudge_2nd_cart: 2 params (name, coupon_code Pro10)');
+assert.strictEqual(params2[1], 'PRO10', 'Param {{2}} should be coupon code PRO10');
+console.log('  ✔ nudge_2nd_cart: 2 params (name, coupon_code PRO10)');
 
 // nudge_3_cart: 2 params (name, coupon_code) — FREEDEL is a template variable
 const params3 = tier1Nudge3.getParams(mockLead);

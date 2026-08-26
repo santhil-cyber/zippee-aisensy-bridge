@@ -36,7 +36,7 @@ async function hasPlacedOrder(phone, email, sinceDate) {
 
     if (!query) return false;
 
-    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&query=${encodeURIComponent(query)}&limit=5`;
+    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&query=${encodeURIComponent(query)}&limit=10`;
 
     const response = await axios.get(url, {
       headers: {
@@ -46,9 +46,31 @@ async function hasPlacedOrder(phone, email, sinceDate) {
       timeout: 5000,
     });
 
-    const orders = response.data?.orders || [];
+    const allOrders = response.data?.orders || [];
+
+    if (allOrders.length === 0) {
+      return false;
+    }
+
+    // 2. CRITICAL: Filter out false positives from wildcard search
+    // Shopify's phone:*XXXXXXXXXX* can match other customers whose phones
+    // contain similar digit sequences. We must verify the phone actually matches.
+    const orders = allOrders.filter(order => {
+      const orderPhones = [
+        order.shipping_address?.phone,
+        order.billing_address?.phone,
+        order.customer?.phone,
+        order.customer?.default_address?.phone,
+        order.phone,
+      ].filter(Boolean).map(p => p.replace(/\D/g, ''));
+
+      // Check if any phone on this order contains our 10-digit query
+      return orderPhones.some(p => p.includes(phoneQuery));
+    });
 
     if (orders.length === 0) {
+      // Wildcard matched but none of the orders belong to this phone
+      console.log(`[Shopify API] Wildcard returned ${allOrders.length} orders but none match ${phone} — false positive filtered out.`);
       return false;
     }
 
@@ -59,7 +81,7 @@ async function hasPlacedOrder(phone, email, sinceDate) {
       return hasRecentOrder;
     }
 
-    // Any order placed counts as conversion
+    // Any verified order counts as conversion
     return orders.length > 0;
 
   } catch (error) {
