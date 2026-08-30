@@ -16,7 +16,7 @@ const { saveOrder } = require('./lib/db');
  *   {{1}} = Customer First Name
  *   {{2}} = Order ID / Order Name (e.g. PPY18583)
  *   {{3}} = Logistics Partner (Pikndel for Jaipur, Zippee for others)
- *   {{4}} = Delivery timeframe (e.g. "1-2 days")
+ *   {{4}} = Delivery timeframe number (e.g. "2")
  * 
  * Shopify webhook topic: orders/create
  * Endpoint: POST /api/order-confirmation
@@ -34,7 +34,7 @@ function getLogisticsPartner(city) {
 }
 
 function getDeliveryTime(city) {
-    return '1-2 days';
+    return '2';
 }
 
 module.exports = async (req, res) => {
