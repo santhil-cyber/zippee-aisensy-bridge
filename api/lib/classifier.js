@@ -3,7 +3,13 @@
  * --------------------------------------------------------
  * Classifies customer events from Shopflo into 5 intent tiers
  * and defines the timing, templates, and parameters for each tier.
+ *
+ * A/B TESTING: Nudges 2, 3, 4 have variant A (original) and variant B (new copy).
+ * Users are deterministically assigned to A or B based on phone hash (50/50 split).
+ * Each user always sees the same variant across all nudges for consistency.
  */
+
+const crypto = require('crypto');
 
 const TIERS = {
   BUYER: {
@@ -45,6 +51,39 @@ const TIERS = {
 };
 
 /**
+ * A/B Test Configuration
+ * ----------------------
+ * Strategy: 50/50 deterministic split based on phone number hash.
+ * Each customer consistently receives the same variant (A or B)
+ * across all nudges in their sequence.
+ *
+ * splitRatio: 50 means 50% get variant A, 50% get variant B
+ *            (adjust to 70 for 70/30 conservative testing)
+ */
+const AB_TEST_CONFIG = {
+  enabled: true,
+  splitRatio: 50, // % of users who get variant A (rest get B)
+  startDate: '2026-09-01', // A/B test start date for analytics
+};
+
+/**
+ * Deterministic A/B variant assignment based on phone number.
+ * Uses a simple hash to ensure the same phone always gets the same variant.
+ * @param {string} phone - Customer phone number
+ * @returns {'A' | 'B'} - The assigned variant
+ */
+function getABVariant(phone) {
+  if (!AB_TEST_CONFIG.enabled || !phone) return 'A';
+
+  // Hash the phone number for a deterministic, evenly distributed split
+  const hash = crypto.createHash('md5').update(String(phone)).digest('hex');
+  // Take the first 8 hex chars and convert to a number 0-100
+  const hashNum = parseInt(hash.substring(0, 8), 16) % 100;
+
+  return hashNum < AB_TEST_CONFIG.splitRatio ? 'A' : 'B';
+}
+
+/**
  * Multi-step nurture sequences per tier
  */
 function formatButtonUrl(url) {
@@ -72,36 +111,77 @@ const SEQUENCE_CONFIG = {
     {
       nudgeNum: 2,
       delayMs: 4 * 60 * 60 * 1000, // T + 4 hours
-      campaignName: 'nudge_2nd_cart',
-      fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
       skipIfReturning: true, // PRO10 coupon — skip for returning customers
-      getParams: (lead = {}) => [
-        String(lead?.name || 'there'),
-        'PRO10',
-      ],
-      tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge2_10off'],
+      // ── A/B Test: Variant A (original) vs Variant B (new copy) ──
+      variants: {
+        A: {
+          campaignName: 'nudge_2nd_cart',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+            'PRO10',
+          ],
+          tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge2_10off', 'AB_Variant_A'],
+        },
+        B: {
+          campaignName: 'nudge_2nd_cart_b',
+          fallbackCampaign: 'nudge_2nd_cart', // fallback to A if B template not yet approved
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+            'PRO10',
+          ],
+          tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge2_10off', 'AB_Variant_B'],
+        },
+      },
     },
     {
       nudgeNum: 3,
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
-      campaignName: 'nudge_3_cart',
-      fallbackCampaign: null, // nudge_3_cart is approved & live in AiSensy
       skipIfReturning: true, // FREEDEL coupon — skip for returning customers
-      getParams: (lead = {}) => [
-        String(lead?.name || 'there'),
-        'FREEDEL',
-      ],
-      tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge3_FreeShip'],
+      // ── A/B Test: Variant A (original) vs Variant B (new copy) ──
+      variants: {
+        A: {
+          campaignName: 'nudge_3_cart',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+            'FREEDEL',
+          ],
+          tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge3_FreeShip', 'AB_Variant_A'],
+        },
+        B: {
+          campaignName: 'nudge_3rd_cart_b',
+          fallbackCampaign: 'nudge_3_cart', // fallback to A if B template not yet approved
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+            'FREEDEL',
+          ],
+          tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge3_FreeShip', 'AB_Variant_B'],
+        },
+      },
     },
     {
       nudgeNum: 4,
       delayMs: 72 * 60 * 60 * 1000, // T + 72 hours
-      campaignName: 'nudge_4_cart',
-      fallbackCampaign: null, // nudge_4_cart is approved & live in AiSensy
-      getParams: (lead = {}) => [
-        String(lead?.name || 'there'),
-      ],
-      tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge4_Scarcity'],
+      // ── A/B Test: Variant A (original) vs Variant B (new copy) ──
+      variants: {
+        A: {
+          campaignName: 'nudge_4_cart',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge4_Scarcity', 'AB_Variant_A'],
+        },
+        B: {
+          campaignName: 'nudge_4_cart_b',
+          fallbackCampaign: 'nudge_4_cart', // fallback to A if B template not yet approved
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['ShopPass_Cart_Abandon', 'Tier1_Nudge4_Scarcity', 'AB_Variant_B'],
+        },
+      },
     },
   ],
 
@@ -120,24 +200,51 @@ const SEQUENCE_CONFIG = {
     {
       nudgeNum: 2,
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
-      campaignName: 'nudge_2nd_cart',
-      fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
       skipIfReturning: true, // PRO10 coupon — skip for returning customers
-      getParams: (lead = {}) => [
-        String(lead?.name || 'there'),
-        'PRO10',
-      ],
-      tags: ['ShopPass_Cart_Adder', 'Tier2_Nudge2_10off'],
+      // ── A/B Test: Variant A (original) vs Variant B (new copy) ──
+      variants: {
+        A: {
+          campaignName: 'nudge_2nd_cart',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+            'PRO10',
+          ],
+          tags: ['ShopPass_Cart_Adder', 'Tier2_Nudge2_10off', 'AB_Variant_A'],
+        },
+        B: {
+          campaignName: 'nudge_2nd_cart_b',
+          fallbackCampaign: 'nudge_2nd_cart',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+            'PRO10',
+          ],
+          tags: ['ShopPass_Cart_Adder', 'Tier2_Nudge2_10off', 'AB_Variant_B'],
+        },
+      },
     },
     {
       nudgeNum: 3,
       delayMs: 5 * 24 * 60 * 60 * 1000, // T + 5 days
-      campaignName: 'nudge_4_cart',
-      fallbackCampaign: null, // nudge_4_cart is approved & live in AiSensy
-      getParams: (lead = {}) => [
-        String(lead?.name || 'there'),
-      ],
-      tags: ['ShopPass_Cart_Adder', 'Tier2_Nudge3_LastChance'],
+      // ── A/B Test: Variant A (original) vs Variant B (new copy) ──
+      variants: {
+        A: {
+          campaignName: 'nudge_4_cart',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['ShopPass_Cart_Adder', 'Tier2_Nudge3_LastChance', 'AB_Variant_A'],
+        },
+        B: {
+          campaignName: 'nudge_4_cart_b',
+          fallbackCampaign: 'nudge_4_cart',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['ShopPass_Cart_Adder', 'Tier2_Nudge3_LastChance', 'AB_Variant_B'],
+        },
+      },
     },
   ],
 
@@ -230,11 +337,41 @@ function classifyCustomer(rawEvents, hasOrderDate) {
 }
 
 /**
- * Get sequence step definition for a given tier and nudge number
+ * Get sequence step definition for a given tier and nudge number.
+ * If the nudge has A/B variants and a phone is provided, resolves the correct variant.
+ * Returns a flat config object with campaignName, getParams, tags, etc.
+ *
+ * @param {string} tierKey
+ * @param {number} nudgeNum
+ * @param {string} [phone] - Customer phone for A/B variant assignment
+ * @returns {object|null} - Resolved nudge config with variant field
  */
-function getNudgeConfig(tierKey, nudgeNum = 1) {
+function getNudgeConfig(tierKey, nudgeNum = 1, phone = null) {
   const sequence = SEQUENCE_CONFIG[tierKey] || [];
-  return sequence.find(s => s.nudgeNum === nudgeNum) || null;
+  const step = sequence.find(s => s.nudgeNum === nudgeNum) || null;
+  if (!step) return null;
+
+  // If this nudge has A/B variants, resolve the correct one
+  if (step.variants) {
+    const variant = getABVariant(phone);
+    const variantConfig = step.variants[variant] || step.variants['A'];
+    return {
+      nudgeNum: step.nudgeNum,
+      delayMs: step.delayMs,
+      skipIfReturning: step.skipIfReturning || false,
+      campaignName: variantConfig.campaignName,
+      fallbackCampaign: variantConfig.fallbackCampaign || null,
+      getParams: variantConfig.getParams,
+      tags: variantConfig.tags || [],
+      abVariant: variant, // Track which variant was assigned
+    };
+  }
+
+  // Non-A/B nudge (e.g. nudge 1) — return as-is
+  return {
+    ...step,
+    abVariant: null,
+  };
 }
 
 /**
@@ -248,7 +385,9 @@ function getMaxNudgesForTier(tierKey) {
 module.exports = {
   TIERS,
   SEQUENCE_CONFIG,
+  AB_TEST_CONFIG,
   classifyCustomer,
   getNudgeConfig,
   getMaxNudgesForTier,
+  getABVariant,
 };

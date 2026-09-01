@@ -76,6 +76,8 @@ module.exports = async (req, res) => {
       skipped_converted: 0,
       skipped_returning: 0,
       errors: 0,
+      ab_variant_a: 0,
+      ab_variant_b: 0,
     };
 
     if (dueMessages.length === 0) {
@@ -127,7 +129,7 @@ module.exports = async (req, res) => {
       // ── Step B2: Skip coupon nudges for returning customers ──
       // Nudges with skipIfReturning (Pro10, FREEDEL) are wasteful for customers
       // who have ordered before — they've likely already used these coupons.
-      const currentNudgeConfig = getNudgeConfig(tier, nudgeNum);
+      const currentNudgeConfig = getNudgeConfig(tier, nudgeNum, phone);
       if (currentNudgeConfig?.skipIfReturning) {
         // Check for ANY past order (no sinceDate filter)
         const isReturningCustomer = await hasPlacedOrder(phone, lead?.email, null);
@@ -141,13 +143,13 @@ module.exports = async (req, res) => {
           const maxNudges = getMaxNudgesForTier(tier);
           let nextEligible = nudgeNum + 1;
           while (nextEligible <= maxNudges) {
-            const nextConfig = getNudgeConfig(tier, nextEligible);
+            const nextConfig = getNudgeConfig(tier, nextEligible, phone);
             if (!nextConfig?.skipIfReturning) break; // Found a non-coupon nudge
             nextEligible++;
           }
 
           if (nextEligible <= maxNudges && lead) {
-            const nextConfig = getNudgeConfig(tier, nextEligible);
+            const nextConfig = getNudgeConfig(tier, nextEligible, phone);
             const nextParams = nextConfig.getParams(lead);
             await enqueueMessage(phone, tier, nextEligible, nextConfig.delayMs, {
               campaignName: nextConfig.campaignName,
@@ -193,20 +195,25 @@ module.exports = async (req, res) => {
         // Track weekly send count for this phone (max 3/week compliance)
         await incrementWeeklyCount(phone);
 
-        // Update lead progress in DB
+        // Update lead progress in DB (include A/B variant for tracking)
         await updateLeadProgress(phone, {
           current_nudge: nudgeNum,
           last_sent_at: timestamp,
+          ab_variant: currentNudgeConfig?.abVariant || null,
         });
 
-        await trackCampaignEvent(campaignName, 'sent', { tier, nudgeNum });
+        // Track per-variant analytics for A/B comparison
+        const variantLabel = currentNudgeConfig?.abVariant || 'A';
+        await trackCampaignEvent(campaignName, 'sent', { tier, nudgeNum, abVariant: variantLabel });
+        if (variantLabel === 'A') results.ab_variant_a++;
+        if (variantLabel === 'B') results.ab_variant_b++;
 
         // ── Step D: Schedule Next Nudge in Tier Sequence ──
         const nextNudgeNum = nudgeNum + 1;
         const maxNudges = getMaxNudgesForTier(tier);
 
         if (nextNudgeNum <= maxNudges) {
-          const nextNudgeConfig = getNudgeConfig(tier, nextNudgeNum);
+          const nextNudgeConfig = getNudgeConfig(tier, nextNudgeNum, phone);
           if (nextNudgeConfig && lead) {
             const nextParams = nextNudgeConfig.getParams(lead);
             await enqueueMessage(phone, tier, nextNudgeNum, nextNudgeConfig.delayMs, {
@@ -256,7 +263,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    console.log(`[Cron Finished]: Evaluated: ${results.evaluated}, Dispatched: ${results.dispatched}, Converted: ${results.converted}, Skipped (returning): ${results.skipped_returning}, Errors: ${results.errors}`);
+    console.log(`[Cron Finished]: Evaluated: ${results.evaluated}, Dispatched: ${results.dispatched} (A: ${results.ab_variant_a}, B: ${results.ab_variant_b}), Converted: ${results.converted}, Skipped (returning): ${results.skipped_returning}, Errors: ${results.errors}`);
 
     return res.status(200).json({
       success: true,

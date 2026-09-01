@@ -34,7 +34,22 @@ async function trackCampaignEvent(campaignName, event, metadata = {}) {
       pipeline.hincrby(`analytics:tier:${metadata.tier}:${dateKey}`, event, 1);
     }
 
-    // 3. Global metric
+    // 3. A/B variant-specific counters (for comparing variant A vs B performance)
+    if (metadata.abVariant) {
+      const variant = metadata.abVariant; // 'A' or 'B'
+      pipeline.hincrby(`analytics:ab:${campaignName}:${variant}`, event, 1);
+      pipeline.hincrby(`analytics:ab:${campaignName}:${variant}:${dateKey}`, event, 1);
+      // Aggregate across all campaigns for this variant
+      pipeline.hincrby(`analytics:ab:variant_${variant}`, event, 1);
+      pipeline.hincrby(`analytics:ab:variant_${variant}:${dateKey}`, event, 1);
+      // Per-nudge variant tracking
+      if (metadata.nudgeNum) {
+        pipeline.hincrby(`analytics:ab:nudge_${metadata.nudgeNum}:${variant}`, event, 1);
+        pipeline.hincrby(`analytics:ab:nudge_${metadata.nudgeNum}:${variant}:${dateKey}`, event, 1);
+      }
+    }
+
+    // 4. Global metric
     pipeline.hincrby('analytics:global', event, 1);
     pipeline.hincrby(`analytics:global:${dateKey}`, event, 1);
 

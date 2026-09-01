@@ -1,0 +1,203 @@
+{
+  "info": {
+    "name": "Protein Pantry — Recovery Engine Tests",
+    "description": "Test all 5 tiers of the Shopflo x AiSensy Recovery Engine.\n\n⚠️ SETUP:\n1. Set the `base_url` variable to your Vercel deployment URL\n2. Set `test_phone` to YOUR phone number (you'll receive real WhatsApp messages!)\n3. Start with Tier 1 test, then trigger the cron to see the message dispatch\n\nThe `shopflo-webhook` endpoint classifies and enqueues.\nThe `cron-retarget` endpoint dispatches due messages.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "https://zippee-aisensy-bridge-debug.vercel.app",
+      "type": "string"
+    },
+    {
+      "key": "test_phone",
+      "value": "+919XXXXXXXXX",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "🔥 Tier 1 — Checkout Abandoned",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"checkout_abandoned\",\n  \"event_list\": [\"store_page_view\", \"collection_page_viewed\", \"product_page_viewed\", \"added_to_cart_ui\", \"checkout_initiated\", \"checkout_abandoned\"],\n  \"customer\": {\n    \"phone\": \"{{test_phone}}\",\n    \"name\": \"Test User Tier1\",\n    \"email\": \"test-tier1@proteinpantry.in\",\n    \"city\": \"Delhi\"\n  },\n  \"utm_source\": \"postman_test\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🛒 Tier 2 — Cart Added (No Checkout)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"added_to_cart_ui\",\n  \"event_list\": [\"store_page_view\", \"product_page_viewed\", \"added_to_cart_ui\"],\n  \"customer\": {\n    \"phone\": \"{{test_phone}}\",\n    \"name\": \"Test User Tier2\",\n    \"email\": \"test-tier2@proteinpantry.in\",\n    \"city\": \"Mumbai\"\n  },\n  \"utm_source\": \"postman_test\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "👀 Tier 3 — Product Browsed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"product_page_viewed\",\n  \"event_list\": [\"store_page_view\", \"collection_page_viewed\", \"product_page_viewed\"],\n  \"customer\": {\n    \"phone\": \"{{test_phone}}\",\n    \"name\": \"Test User Tier3\",\n    \"email\": \"test-tier3@proteinpantry.in\",\n    \"city\": \"Bangalore\"\n  },\n  \"utm_source\": \"facebook\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "📂 Tier 4 — Collection Browsed",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"collection_page_viewed\",\n  \"event_list\": [\"store_page_view\", \"collection_page_viewed\"],\n  \"customer\": {\n    \"phone\": \"{{test_phone}}\",\n    \"name\": \"Test User Tier4\",\n    \"email\": \"test-tier4@proteinpantry.in\",\n    \"city\": \"Jaipur\"\n  },\n  \"utm_source\": \"google\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🏠 Tier 5 — Store Visitor Only",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"store_page_view\",\n  \"event_list\": [\"store_page_view\"],\n  \"customer\": {\n    \"phone\": \"{{test_phone}}\",\n    \"name\": \"Test User Tier5\",\n    \"email\": \"test-tier5@proteinpantry.in\",\n    \"city\": \"Chennai\"\n  },\n  \"utm_source\": \"instagram\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "✅ Order Completed (Conversion)",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" }
+        ],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"event_type\": \"order_completed\",\n  \"event_list\": [\"store_page_view\", \"product_page_viewed\", \"added_to_cart_ui\", \"checkout_initiated\", \"payment_completed\", \"order_completed\"],\n  \"customer\": {\n    \"phone\": \"{{test_phone}}\",\n    \"name\": \"Test User Buyer\",\n    \"email\": \"test-buyer@proteinpantry.in\",\n    \"city\": \"Delhi\"\n  },\n  \"utm_source\": \"postman_test\",\n  \"last_ordered_date\": \"2026-08-21\"\n}"
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "⏰ Trigger Cron (Normal)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/cron-retarget",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cron-retarget"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "⏰ Trigger Cron (Force — ignore IST window)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/cron-retarget?force=true",
+          "host": ["{{base_url}}"],
+          "path": ["api", "cron-retarget"],
+          "query": [
+            { "key": "force", "value": "true" }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🏥 Health Check — Shopflo Webhook",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/shopflo-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "shopflo-webhook"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🏥 Health Check — Zippee Webhook",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/zippee-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "zippee-webhook"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "🏥 Health Check — Pikndel Webhook",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{base_url}}/api/pikndel-webhook",
+          "host": ["{{base_url}}"],
+          "path": ["api", "pikndel-webhook"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

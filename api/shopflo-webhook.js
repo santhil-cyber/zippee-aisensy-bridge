@@ -189,8 +189,8 @@ module.exports = async (req, res) => {
     }
     leadProfile = leadProfile || leadData;
 
-    // Fetch Nudge 1 configuration for this tier
-    const nudge1Config = getNudgeConfig(assignedTier, 1);
+    // Fetch Nudge 1 configuration for this tier (phone passed for future A/B variant support)
+    const nudge1Config = getNudgeConfig(assignedTier, 1, phone);
 
     if (nudge1Config) {
       const templateParams = nudge1Config.getParams(leadProfile);
