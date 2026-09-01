@@ -1,6 +1,7 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const { saveOrder } = require('./lib/db');
+const { saveOrder, markConverted, getLead } = require('./lib/db');
+const { cancelAllMessagesForPhone } = require('./lib/queue');
 
 /**
  * Shopify / Shopflo → AiSensy Order Confirmation Webhook
@@ -122,6 +123,18 @@ module.exports = async (req, res) => {
             });
         } catch (dbErr) {
             console.warn(`[${requestId}] Non-critical: Failed to cache order in DB:`, dbErr.message);
+        }
+
+        // ─── CRITICAL: Mark lead as CONVERTED and cancel all queued nudges ──
+        // This prevents abandoned cart nudges from being sent AFTER a customer
+        // has already placed an order. Without this, the cron-retarget job
+        // would continue dispatching scheduled recovery messages.
+        try {
+            await markConverted(formattedPhone);
+            await cancelAllMessagesForPhone(formattedPhone);
+            console.log(`[${requestId}] ✅ Lead ${formattedPhone} marked CONVERTED. All queued nudges cancelled.`);
+        } catch (convErr) {
+            console.warn(`[${requestId}] Non-critical: Failed to mark conversion:`, convErr.message);
         }
 
         // ─── Prepare AiSensy payload ─────────────────────────────────
