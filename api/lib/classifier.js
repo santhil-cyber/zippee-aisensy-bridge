@@ -12,6 +12,12 @@
 const crypto = require('crypto');
 
 const TIERS = {
+  TIER_0_REORDER: {
+    key: 'TIER_0_REORDER',
+    priority: -1, // Separate funnel — not part of acquisition intent hierarchy
+    label: 'Past Buyer (Reorder Funnel)',
+    cooldownMs: 15 * 24 * 60 * 60 * 1000, // 15 days post-order
+  },
   BUYER: {
     key: 'BUYER',
     priority: 0,
@@ -67,6 +73,22 @@ const AB_TEST_CONFIG = {
 };
 
 /**
+ * Browse-Abandon A/B/C Test Configuration
+ * ----------------------------------------
+ * Strategy: 33/33/34 deterministic split based on phone number hash.
+ * Each browse-abandon customer consistently receives the same variant (A, B, or C)
+ * across all nudges in their sequence.
+ *
+ * Variant A — Trust Builder: Lab-test credibility angle
+ * Variant B — Decision Helper: Chef's Picks / bundle recommendation
+ * Variant C — Problem-Aware: Protein gap education + product highlight
+ */
+const ABC_TEST_CONFIG = {
+  enabled: true,
+  startDate: '2026-09-08', // A/B/C test start date for analytics
+};
+
+/**
  * Deterministic A/B variant assignment based on phone number.
  * Uses a simple hash to ensure the same phone always gets the same variant.
  * @param {string} phone - Customer phone number
@@ -84,6 +106,23 @@ function getABVariant(phone) {
 }
 
 /**
+ * Deterministic A/B/C variant assignment for browse-abandon nudges.
+ * Uses a separate hash salt so variant assignment is independent of the 2-way A/B test.
+ * @param {string} phone - Customer phone number
+ * @returns {'A' | 'B' | 'C'} - The assigned variant
+ */
+function getABCVariant(phone) {
+  if (!ABC_TEST_CONFIG.enabled || !phone) return 'A';
+
+  const hash = crypto.createHash('md5').update('browse_' + String(phone)).digest('hex');
+  const hashNum = parseInt(hash.substring(0, 8), 16) % 100;
+
+  if (hashNum < 33) return 'A';  // Trust Builder
+  if (hashNum < 66) return 'B';  // Decision Helper (Chef's Picks)
+  return 'C';                     // Problem-Aware (Protein Gap)
+}
+
+/**
  * Multi-step nurture sequences per tier
  */
 function formatButtonUrl(url) {
@@ -96,6 +135,61 @@ function formatButtonUrl(url) {
 }
 
 const SEQUENCE_CONFIG = {
+  // ══════════════════════════════════════════════════════════════════════
+  // REORDER SEQUENCE (Category 3 — Past Buyers)
+  // ══════════════════════════════════════════════════════════════════════
+  // Enrolled automatically when an order is confirmed.
+  // Goal: bring satisfied customers back for repeat purchases.
+  // 4 nudges spread over 15-45 days post-order.
+  // ══════════════════════════════════════════════════════════════════════
+  TIER_0_REORDER: [
+    {
+      nudgeNum: 1,
+      delayMs: 15 * 24 * 60 * 60 * 1000, // T + 15 days post-order
+      campaignName: 'reorder_nudge_1_restock',
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Reorder', 'Nudge1_Restock'],
+    },
+    {
+      nudgeNum: 2,
+      delayMs: 22 * 24 * 60 * 60 * 1000, // T + 22 days post-order
+      campaignName: 'browse_nudge_chefpick', // REUSE: Chef's Picks recommendation works for upsell
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Reorder', 'Nudge2_ChefsPicks'],
+    },
+    {
+      nudgeNum: 3,
+      delayMs: 30 * 24 * 60 * 60 * 1000, // T + 30 days post-order
+      campaignName: 'nudge_2nd_cart', // REUSE: Generic "protein goals + coupon" messaging works for reorder
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+        'COMEBACK10',
+      ],
+      tags: ['Reorder', 'Nudge3_Loyalty_Coupon'],
+    },
+    {
+      nudgeNum: 4,
+      delayMs: 45 * 24 * 60 * 60 * 1000, // T + 45 days post-order
+      campaignName: 'reorder_nudge_4_winback',
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Reorder', 'Nudge4_Winback'],
+    },
+  ],
+
+  // ══════════════════════════════════════════════════════════════════════
+  // CART ABANDON SEQUENCES (Category 1)
+  // ══════════════════════════════════════════════════════════════════════
+
   TIER_1_CHECKOUT_ABANDON: [
     {
       nudgeNum: 1,
@@ -248,18 +342,183 @@ const SEQUENCE_CONFIG = {
     },
   ],
 
+  // ══════════════════════════════════════════════════════════════════════
+  // BROWSE-ABANDON SEQUENCES (Category 2 — A/B/C TEST)
+  // ══════════════════════════════════════════════════════════════════════
+  // These target customers who scrolled but put NOTHING in cart.
+  // Nudge 1: 3 message variants tested via getABCVariant():
+  //   A = Trust Builder (lab tests)      → browse_nudge_trust (with header image)
+  //   B = Decision Helper (Chef's Picks) → browse_nudge_chefpick
+  //   C = Problem-Aware (protein gap)    → browse_nudge_protein
+  // Nudge 2+: Shared follow-up nudges (bestseller, social proof, coupon)
+  // ══════════════════════════════════════════════════════════════════════
+
   TIER_3_PRODUCT_BROWSER: [
     {
       nudgeNum: 1,
       delayMs: 24 * 60 * 60 * 1000, // T + 24 hours
-      campaignName: 'nudge_2nd_cart',
-      fallbackCampaign: null, // nudge_2nd_cart is approved & live in AiSensy
+      // A/B/C browse-abandon test — 3 message angles
+      variants: {
+        A: {
+          campaignName: 'browse_nudge_trust',
+          fallbackCampaign: null,
+          mediaUrl: 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier3_Nudge1', 'ABC_Variant_A', 'Trust_Builder'],
+        },
+        B: {
+          campaignName: 'browse_nudge_chefpick',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier3_Nudge1', 'ABC_Variant_B', 'Chefs_Picks'],
+        },
+        C: {
+          campaignName: 'browse_nudge_protein',
+          fallbackCampaign: 'browse_nudge_chefpick', // Fallback to live Chef's Picks if C pending
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier3_Nudge1', 'ABC_Variant_C', 'Protein_Gap'],
+        },
+      },
+    },
+    {
+      nudgeNum: 2,
+      delayMs: 72 * 60 * 60 * 1000, // T + 72 hours
       skipIfReturning: true, // PRO10 coupon — skip for returning customers
+      campaignName: 'nudge_2nd_cart',
+      fallbackCampaign: null,
       getParams: (lead = {}) => [
         String(lead?.name || 'there'),
         'PRO10',
       ],
-      tags: ['ShopPass_Product_Browser', 'Tier3_Nudge1'],
+      tags: ['Browse_Abandon', 'Tier3_Nudge2_Coupon'],
+    },
+    {
+      nudgeNum: 3,
+      delayMs: 5 * 24 * 60 * 60 * 1000, // T + 5 days
+      campaignName: 'browse_nudge_chefpick', // REUSE: Rotate Chef's Picks as follow-up
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Browse_Abandon', 'Tier3_Nudge3_ChefsPicks'],
+    },
+  ],
+
+  TIER_4_COLLECTION_BROWSER: [
+    {
+      nudgeNum: 1,
+      delayMs: 48 * 60 * 60 * 1000, // T + 48 hours
+      // Same A/B/C browse-abandon test
+      variants: {
+        A: {
+          campaignName: 'browse_nudge_trust',
+          fallbackCampaign: null,
+          mediaUrl: 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier4_Nudge1', 'ABC_Variant_A', 'Trust_Builder'],
+        },
+        B: {
+          campaignName: 'browse_nudge_chefpick',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier4_Nudge1', 'ABC_Variant_B', 'Chefs_Picks'],
+        },
+        C: {
+          campaignName: 'browse_nudge_protein',
+          fallbackCampaign: 'browse_nudge_chefpick',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier4_Nudge1', 'ABC_Variant_C', 'Protein_Gap'],
+        },
+      },
+    },
+    {
+      nudgeNum: 2,
+      delayMs: 4 * 24 * 60 * 60 * 1000, // T + 4 days
+      campaignName: 'browse_nudge_chefpick', // REUSE: Rotate Chef's Picks as follow-up
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Browse_Abandon', 'Tier4_Nudge2_ChefsPicks'],
+    },
+    {
+      nudgeNum: 3,
+      delayMs: 7 * 24 * 60 * 60 * 1000, // T + 7 days
+      campaignName: 'browse_nudge_trust', // REUSE: Rotate Trust/Lab-test as follow-up
+      fallbackCampaign: null,
+      mediaUrl: 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Browse_Abandon', 'Tier4_Nudge3_Trust'],
+    },
+  ],
+
+  TIER_5_STORE_VISITOR: [
+    {
+      nudgeNum: 1,
+      delayMs: 7 * 24 * 60 * 60 * 1000, // T + 7 days (very low intent — longer delay)
+      // Same A/B/C browse-abandon test
+      variants: {
+        A: {
+          campaignName: 'browse_nudge_trust',
+          fallbackCampaign: null,
+          mediaUrl: 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier5_Nudge1', 'ABC_Variant_A', 'Trust_Builder'],
+        },
+        B: {
+          campaignName: 'browse_nudge_chefpick',
+          fallbackCampaign: null,
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier5_Nudge1', 'ABC_Variant_B', 'Chefs_Picks'],
+        },
+        C: {
+          campaignName: 'browse_nudge_protein',
+          fallbackCampaign: 'browse_nudge_chefpick',
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Browse_Abandon', 'Tier5_Nudge1', 'ABC_Variant_C', 'Protein_Gap'],
+        },
+      },
+    },
+    {
+      nudgeNum: 2,
+      delayMs: 10 * 24 * 60 * 60 * 1000, // T + 10 days
+      campaignName: 'browse_nudge_chefpick', // REUSE: Rotate Chef's Picks as follow-up
+      fallbackCampaign: null,
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Browse_Abandon', 'Tier5_Nudge2_ChefsPicks'],
+    },
+    {
+      nudgeNum: 3,
+      delayMs: 14 * 24 * 60 * 60 * 1000, // T + 14 days
+      campaignName: 'browse_nudge_trust', // REUSE: Rotate Trust/Lab-test as follow-up
+      fallbackCampaign: null,
+      mediaUrl: 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+      getParams: (lead = {}) => [
+        String(lead?.name || 'there'),
+      ],
+      tags: ['Browse_Abandon', 'Tier5_Nudge3_Trust'],
     },
   ],
 };
@@ -351,9 +610,11 @@ function getNudgeConfig(tierKey, nudgeNum = 1, phone = null) {
   const step = sequence.find(s => s.nudgeNum === nudgeNum) || null;
   if (!step) return null;
 
-  // If this nudge has A/B variants, resolve the correct one
+  // If this nudge has variants, resolve the correct one
   if (step.variants) {
-    const variant = getABVariant(phone);
+    // Determine whether this is a 3-way (A/B/C) browse-abandon test or 2-way (A/B) cart test
+    const isBrowseTier = tierKey.includes('BROWSER') || tierKey.includes('VISITOR');
+    const variant = isBrowseTier ? getABCVariant(phone) : getABVariant(phone);
     const variantConfig = step.variants[variant] || step.variants['A'];
     return {
       nudgeNum: step.nudgeNum,
@@ -361,15 +622,17 @@ function getNudgeConfig(tierKey, nudgeNum = 1, phone = null) {
       skipIfReturning: step.skipIfReturning || false,
       campaignName: variantConfig.campaignName,
       fallbackCampaign: variantConfig.fallbackCampaign || null,
+      mediaUrl: variantConfig.mediaUrl || null,
       getParams: variantConfig.getParams,
       tags: variantConfig.tags || [],
-      abVariant: variant, // Track which variant was assigned
+      abVariant: variant, // Track which variant was assigned (A, B, or C)
     };
   }
 
-  // Non-A/B nudge (e.g. nudge 1) — return as-is
+  // Non-variant nudge (e.g. shared follow-up coupon) — return as-is
   return {
     ...step,
+    mediaUrl: step.mediaUrl || null,
     abVariant: null,
   };
 }
@@ -386,8 +649,10 @@ module.exports = {
   TIERS,
   SEQUENCE_CONFIG,
   AB_TEST_CONFIG,
+  ABC_TEST_CONFIG,
   classifyCustomer,
   getNudgeConfig,
   getMaxNudgesForTier,
   getABVariant,
+  getABCVariant,
 };

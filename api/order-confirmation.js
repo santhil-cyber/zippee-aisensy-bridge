@@ -1,7 +1,9 @@
 const axios = require('axios');
 const crypto = require('crypto');
-const { saveOrder, markConverted, getLead } = require('./lib/db');
-const { cancelAllMessagesForPhone } = require('./lib/queue');
+const { saveOrder, markConverted, getLead, saveLeadForReorder } = require('./lib/db');
+const { cancelAllMessagesForPhone, enqueueMessage } = require('./lib/queue');
+const { getNudgeConfig } = require('./lib/classifier');
+const { trackCampaignEvent } = require('./lib/analytics');
 
 /**
  * Shopify / Shopflo → AiSensy Order Confirmation Webhook
@@ -171,12 +173,47 @@ module.exports = async (req, res) => {
         const response = await axios.post('https://backend.aisensy.com/campaign/t1/api/v2', aisensyData);
 
         console.log(`[${requestId}] AiSensy Response:`, response.data);
+
+        // ── REORDER FUNNEL: Enqueue first reorder nudge (T+15 days) ──────
+        // After a successful order, we enroll the customer into the reorder
+        // funnel so they receive a "time to restock" nudge 15 days later.
+        try {
+            const reorderLead = await saveLeadForReorder(formattedPhone, {
+                name: name,
+                email: customer.email || '',
+                city: city,
+                last_order_date: new Date().toISOString(),
+            });
+
+            const reorderNudge1 = getNudgeConfig('TIER_0_REORDER', 1, formattedPhone);
+            if (reorderNudge1 && reorderLead) {
+                const reorderParams = reorderNudge1.getParams(reorderLead);
+                await enqueueMessage(formattedPhone, 'TIER_0_REORDER', 1, reorderNudge1.delayMs, {
+                    campaignName: reorderNudge1.campaignName,
+                    fallbackCampaign: reorderNudge1.fallbackCampaign,
+                    templateParams: reorderParams,
+                    tags: reorderNudge1.tags,
+                    attributes: {
+                        Tier: 'TIER_0_REORDER',
+                        Nudge_Number: '1',
+                        Order_ID: orderId,
+                        City: city,
+                    },
+                });
+                await trackCampaignEvent(reorderNudge1.campaignName, 'enqueued', { tier: 'TIER_0_REORDER', nudgeNum: 1 });
+                console.log(`[${requestId}] 🔄 Reorder Nudge 1 enqueued for ${formattedPhone} in ${reorderNudge1.delayMs / (24 * 60 * 60 * 1000)} days.`);
+            }
+        } catch (reorderErr) {
+            console.warn(`[${requestId}] Non-critical: Failed to enqueue reorder nudge:`, reorderErr.message);
+        }
+
         return res.status(200).json({
             success: true,
-            message: 'Order confirmation WhatsApp queued',
+            message: 'Order confirmation WhatsApp queued + Reorder funnel enrolled',
             order_id: orderId,
             customer_name: name,
             phone: formattedPhone,
+            reorder_enrolled: true,
             requestId
         });
 

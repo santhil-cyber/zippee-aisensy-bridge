@@ -8,7 +8,7 @@
  */
 
 const axios = require('axios');
-const { saveLead, getLead, markConverted } = require('./lib/db');
+const { saveLead, getLead, markConverted, saveLeadForReorder } = require('./lib/db');
 const { classifyCustomer, getNudgeConfig, TIERS } = require('./lib/classifier');
 const { enqueueMessage, cancelAllMessagesForPhone } = require('./lib/queue');
 const { trackCampaignEvent } = require('./lib/analytics');
@@ -100,7 +100,37 @@ module.exports = async (req, res) => {
         },
       }).catch(err => console.log('AiSensy tag sync notice:', err.response?.data || err.message));
 
-      return res.status(200).json({ success: true, status: 'customer_marked_as_converted' });
+      // ── REORDER FUNNEL: Enqueue first reorder nudge (T+15 days) ──
+      try {
+        const reorderLead = await saveLeadForReorder(phone, {
+          name,
+          email,
+          city,
+          last_order_date: new Date().toISOString(),
+        });
+
+        const reorderNudge1 = getNudgeConfig('TIER_0_REORDER', 1, phone);
+        if (reorderNudge1 && reorderLead) {
+          const reorderParams = reorderNudge1.getParams(reorderLead);
+          await enqueueMessage(phone, 'TIER_0_REORDER', 1, reorderNudge1.delayMs, {
+            campaignName: reorderNudge1.campaignName,
+            fallbackCampaign: reorderNudge1.fallbackCampaign,
+            templateParams: reorderParams,
+            tags: reorderNudge1.tags,
+            attributes: {
+              Tier: 'TIER_0_REORDER',
+              Nudge_Number: '1',
+              City: city,
+            },
+          });
+          await trackCampaignEvent(reorderNudge1.campaignName, 'enqueued', { tier: 'TIER_0_REORDER', nudgeNum: 1 });
+          console.log(`[Shopflo Webhook] 🔄 Reorder Nudge 1 enqueued for ${phone}.`);
+        }
+      } catch (reorderErr) {
+        console.warn('[Shopflo Webhook] Non-critical: Reorder enqueue notice:', reorderErr.message);
+      }
+
+      return res.status(200).json({ success: true, status: 'customer_marked_as_converted', reorder_enrolled: true });
     }
 
     // ── 2. NON-BUYER RETARGETING ENROLLMENT & DEDUPLICATION ──
@@ -200,6 +230,7 @@ module.exports = async (req, res) => {
         await enqueueMessage(phone, assignedTier, 1, nudge1Config.delayMs, {
           campaignName: nudge1Config.campaignName,
           fallbackCampaign: nudge1Config.fallbackCampaign,
+          mediaUrl: nudge1Config.mediaUrl || '',
           templateParams,
           tags: nudge1Config.tags,
           attributes: {

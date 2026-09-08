@@ -66,6 +66,8 @@ async function saveLead(lead) {
     enrolled_at: existing?.enrolled_at || now,
     last_sent_at: existing?.last_sent_at || null,
     cycle_count: existing?.cycle_count || 0,
+    order_count: lead.order_count !== undefined ? lead.order_count : (existing?.order_count || 0),
+    last_order_date: lead.last_order_date || existing?.last_order_date || null,
     source: lead.source || existing?.source || 'shopflo_shoppass',
     utm_source: lead.utm_source || existing?.utm_source || '',
     utm_medium: lead.utm_medium || existing?.utm_medium || '',
@@ -109,6 +111,8 @@ async function markConverted(phone) {
     ...(existing || { phone }),
     status: 'CONVERTED',
     converted_at: new Date().toISOString(),
+    last_order_date: new Date().toISOString(),
+    order_count: (existing?.order_count || 0) + 1,
   };
 
   await redis.set(key, payload);
@@ -246,12 +250,48 @@ async function getOrder(orderIdentifier) {
   }
 }
 
+/**
+ * Re-enroll a converted lead into the reorder funnel.
+ * This preserves the lead's order history while switching them to TIER_0_REORDER.
+ * Called from order-confirmation.js after marking CONVERTED.
+ */
+async function saveLeadForReorder(phone, leadData = {}) {
+  const redis = getRedis();
+  if (!redis || !phone) return null;
+
+  const key = `lead:${phone}`;
+  const now = new Date().toISOString();
+  const existing = await redis.get(key);
+
+  const payload = {
+    ...(existing || {}),
+    phone,
+    name: leadData.name || existing?.name || 'Customer',
+    email: leadData.email || existing?.email || '',
+    city: leadData.city || existing?.city || '',
+    status: 'ACTIVE',
+    tier: 'TIER_0_REORDER',
+    current_nudge: 0,
+    last_order_date: leadData.last_order_date || now,
+    order_count: existing?.order_count || 1,
+    enrolled_at: now, // Reset enrollment to order date for reorder timing
+    source: 'reorder_funnel',
+    updated_at: now,
+  };
+
+  await redis.set(key, payload);
+  await redis.sadd('set:active_leads', phone);
+  console.log(`[DB] Enrolled lead ${phone} (${payload.name}) in TIER_0_REORDER funnel (Order #${payload.order_count}).`);
+  return payload;
+}
+
 module.exports = {
   saveLead,
   getLead,
   markConverted,
   getActiveLeads,
   updateLeadProgress,
+  saveLeadForReorder,
   saveOrder,
   getOrder,
   getRedis,

@@ -92,6 +92,7 @@ async function enqueueMessage(phone, tier, nudgeNum, delayMs, campaignData = {})
     scheduledAt: new Date(sendAt).toISOString(),
     campaignName: campaignData.campaignName || '',
     fallbackCampaign: campaignData.fallbackCampaign || '',
+    mediaUrl: campaignData.mediaUrl || '',
     templateParams: campaignData.templateParams || [],
     tags: campaignData.tags || [],
     attributes: campaignData.attributes || {},

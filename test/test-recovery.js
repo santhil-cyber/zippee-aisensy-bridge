@@ -140,8 +140,13 @@ console.log('  ✔ Tier 2 template params validated');
 // Tier 3
 const tier3Nudge1 = getNudgeConfig('TIER_3_PRODUCT_BROWSER', 1);
 const tier3Params1 = tier3Nudge1.getParams(mockLead);
-assert.strictEqual(tier3Params1.length, 2, 'Tier 3 Nudge 1 (nudge_2nd_cart) should have 2 params');
-assert.strictEqual(tier3Nudge1.campaignName, 'nudge_2nd_cart', 'Tier 3 Nudge 1 should use nudge_2nd_cart');
+assert.strictEqual(tier3Params1.length, 1, 'Tier 3 Nudge 1 should have 1 param (name)');
+assert.ok(['browse_nudge_trust', 'browse_nudge_chefpick', 'browse_nudge_protein'].includes(tier3Nudge1.campaignName), 'Tier 3 Nudge 1 should use an A/B/C browse template');
+
+const tier3Nudge2 = getNudgeConfig('TIER_3_PRODUCT_BROWSER', 2);
+const tier3Params2 = tier3Nudge2.getParams(mockLead);
+assert.strictEqual(tier3Params2.length, 2, 'Tier 3 Nudge 2 (nudge_2nd_cart) should have 2 params');
+assert.strictEqual(tier3Nudge2.campaignName, 'nudge_2nd_cart', 'Tier 3 Nudge 2 should use nudge_2nd_cart');
 console.log('  ✔ Tier 3 template params validated');
 
 // ── TEST 4: Sending Window & IST Time Management ──
@@ -172,7 +177,6 @@ for (const tierKey of allTiers) {
   for (let i = 1; i <= maxNudges; i++) {
     const config = getNudgeConfig(tierKey, i);
     assert.ok(config.campaignName, `${tierKey} Nudge ${i} must have campaignName`);
-    assert.strictEqual(config.fallbackCampaign, null, `${tierKey} Nudge ${i} fallbackCampaign should be null`);
     assert.ok(config.getParams, `${tierKey} Nudge ${i} must have getParams function`);
     assert.ok(config.tags && config.tags.length > 0, `${tierKey} Nudge ${i} must have tags`);
   }
@@ -192,8 +196,8 @@ assert.strictEqual(t1n3Skip.skipIfReturning, true, 'Tier 1 Nudge 3 (FREEDEL) mus
 const t2n2Skip = getNudgeConfig('TIER_2_CART_ADDER', 2);
 assert.strictEqual(t2n2Skip.skipIfReturning, true, 'Tier 2 Nudge 2 (Pro10) must have skipIfReturning');
 
-const t3n1Skip = getNudgeConfig('TIER_3_PRODUCT_BROWSER', 1);
-assert.strictEqual(t3n1Skip.skipIfReturning, true, 'Tier 3 Nudge 1 (Pro10) must have skipIfReturning');
+const t3n2Skip = getNudgeConfig('TIER_3_PRODUCT_BROWSER', 2);
+assert.strictEqual(t3n2Skip.skipIfReturning, true, 'Tier 3 Nudge 2 (Pro10) must have skipIfReturning');
 
 console.log('  ✔ All coupon nudges have skipIfReturning: true');
 

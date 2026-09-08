@@ -12,7 +12,7 @@
  */
 
 const axios = require('axios');
-const { getLead, markConverted, updateLeadProgress } = require('./lib/db');
+const { getLead, markConverted, updateLeadProgress, saveLeadForReorder } = require('./lib/db');
 const { hasPlacedOrder } = require('./lib/shopify');
 const {
   getDueMessages,
@@ -42,6 +42,10 @@ async function sendWithFallback(payload, fallbackCampaign) {
         ...payload,
         campaignName: fallbackCampaign,
       };
+      // If fallback template is not browse_nudge_trust, do not send media header
+      if (fallbackCampaign !== 'browse_nudge_trust') {
+        delete fallbackPayload.media;
+      }
       return await axios.post(AISENSY_URL, fallbackPayload);
     }
     throw err;
@@ -78,6 +82,7 @@ module.exports = async (req, res) => {
       errors: 0,
       ab_variant_a: 0,
       ab_variant_b: 0,
+      abc_variant_c: 0,
     };
 
     if (dueMessages.length === 0) {
@@ -90,7 +95,7 @@ module.exports = async (req, res) => {
     }
 
     for (const msg of dueMessages) {
-      const { memberKey, phone, tier, nudgeNum, campaignName, fallbackCampaign, templateParams, tags, attributes } = msg;
+      const { memberKey, phone, tier, nudgeNum, campaignName, fallbackCampaign, mediaUrl, templateParams, tags, attributes } = msg;
 
       // ── Step A: Check DB Lead Status ──
       const lead = await getLead(phone);
@@ -120,6 +125,37 @@ module.exports = async (req, res) => {
           tags: ['Customer_Converted', 'Recovered_via_WhatsApp'],
           attributes: { Last_Order_Date: timestamp },
         }).catch(() => {});
+
+        // ── REORDER FUNNEL: Enqueue reorder nudge if not already in reorder tier ──
+        // Avoid infinite loop: don't re-enqueue reorder from within a reorder nudge
+        if (tier !== 'TIER_0_REORDER') {
+          try {
+            const reorderLead = await saveLeadForReorder(phone, {
+              name: lead?.name || 'Customer',
+              email: lead?.email || '',
+              city: lead?.city || '',
+              last_order_date: new Date().toISOString(),
+            });
+
+            const reorderNudge1 = getNudgeConfig('TIER_0_REORDER', 1, phone);
+            if (reorderNudge1 && reorderLead) {
+              const reorderParams = reorderNudge1.getParams(reorderLead);
+              await enqueueMessage(phone, 'TIER_0_REORDER', 1, reorderNudge1.delayMs, {
+                campaignName: reorderNudge1.campaignName,
+                fallbackCampaign: reorderNudge1.fallbackCampaign,
+                templateParams: reorderParams,
+                tags: reorderNudge1.tags,
+                attributes: {
+                  Tier: 'TIER_0_REORDER',
+                  Nudge_Number: '1',
+                },
+              });
+              console.log(`[Cron] 🔄 Reorder Nudge 1 enqueued for converted lead ${phone}.`);
+            }
+          } catch (reorderErr) {
+            console.warn(`[Cron] Non-critical: Reorder enqueue failed for ${phone}:`, reorderErr.message);
+          }
+        }
 
         await trackCampaignEvent(campaignName, 'converted', { tier, nudgeNum });
         results.converted++;
@@ -185,6 +221,14 @@ module.exports = async (req, res) => {
         templateParams: templateParams || [String(lead?.name || 'there'), 'your items', 'https://proteinpantry.in'],
       };
 
+      // Add media for templates with header images (e.g. browse_nudge_trust)
+      if (mediaUrl || campaignName === 'browse_nudge_trust') {
+        payload.media = {
+          url: mediaUrl || 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+          filename: 'protein_pantry.png',
+        };
+      }
+
       try {
         console.log(`[Cron] Dispatched ${campaignName} (Nudge ${nudgeNum}) to ${phone}...`);
         await sendWithFallback(payload, fallbackCampaign);
@@ -202,11 +246,12 @@ module.exports = async (req, res) => {
           ab_variant: currentNudgeConfig?.abVariant || null,
         });
 
-        // Track per-variant analytics for A/B comparison
+        // Track per-variant analytics for A/B/C comparison
         const variantLabel = currentNudgeConfig?.abVariant || 'A';
         await trackCampaignEvent(campaignName, 'sent', { tier, nudgeNum, abVariant: variantLabel });
         if (variantLabel === 'A') results.ab_variant_a++;
         if (variantLabel === 'B') results.ab_variant_b++;
+        if (variantLabel === 'C') results.abc_variant_c++;
 
         // ── Step D: Schedule Next Nudge in Tier Sequence ──
         const nextNudgeNum = nudgeNum + 1;
@@ -219,6 +264,7 @@ module.exports = async (req, res) => {
             await enqueueMessage(phone, tier, nextNudgeNum, nextNudgeConfig.delayMs, {
               campaignName: nextNudgeConfig.campaignName,
               fallbackCampaign: nextNudgeConfig.fallbackCampaign,
+              mediaUrl: nextNudgeConfig.mediaUrl || '',
               templateParams: nextParams,
               tags: nextNudgeConfig.tags,
               attributes: {
@@ -263,7 +309,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    console.log(`[Cron Finished]: Evaluated: ${results.evaluated}, Dispatched: ${results.dispatched} (A: ${results.ab_variant_a}, B: ${results.ab_variant_b}), Converted: ${results.converted}, Skipped (returning): ${results.skipped_returning}, Errors: ${results.errors}`);
+    console.log(`[Cron Finished]: Evaluated: ${results.evaluated}, Dispatched: ${results.dispatched} (A: ${results.ab_variant_a}, B: ${results.ab_variant_b}, C: ${results.abc_variant_c}), Converted: ${results.converted}, Skipped (returning): ${results.skipped_returning}, Errors: ${results.errors}`);
 
     return res.status(200).json({
       success: true,
