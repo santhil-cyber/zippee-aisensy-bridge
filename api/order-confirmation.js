@@ -8,18 +8,22 @@ const { trackCampaignEvent } = require('./lib/analytics');
 /**
  * Shopify / Shopflo → AiSensy Order Confirmation Webhook
  * 
- * Template message (order_confirmation_v4):
+ * Template message (order_confirmation_v5):
  *   Hi {{1}}, your order is confirmed! 🎉
  *   Your order ID is {{2}}. You will receive a tracking message from our
  *   logistics partner {{3}} once your order is dispatched.
- *   Your order will be delivered within {{4}}.
+ *   Your order will be delivered within a day. We'll keep you updated every step of the way!
+ *   Please note: Due to high demand or logistical delays, your order delivery
+ *   might be slightly delayed. We appreciate your patience.
  *   ~Team Protein Pantry
  * 
  * Params:
  *   {{1}} = Customer First Name
  *   {{2}} = Order ID / Order Name (e.g. PPY18583)
  *   {{3}} = Logistics Partner (Pikndel for Jaipur, Zippee for others)
- *   {{4}} = Delivery timeframe number (e.g. "2")
+ * 
+ * NOTE: Delivery timeframe is hardcoded in the template body ("within a day")
+ *       — no {{4}} param needed unlike v4/v5.
  * 
  * Shopify webhook topic: orders/create
  * Endpoint: POST /api/order-confirmation
@@ -36,9 +40,8 @@ function getLogisticsPartner(city) {
     return isJaipur(city) ? 'Pikndel' : 'Zippee';
 }
 
-function getDeliveryTime(city) {
-    return '2';
-}
+// NOTE: getDeliveryTime() removed in v6 — delivery timeframe ("within a day")
+// is now hardcoded directly in the AiSensy template body.
 
 module.exports = async (req, res) => {
     // Handle non-POST requests (health check)
@@ -142,15 +145,14 @@ module.exports = async (req, res) => {
         // ─── Prepare AiSensy payload ─────────────────────────────────
         const name = String(firstName);
         const logisticsPartner = getLogisticsPartner(city);
-        const deliveryTime = getDeliveryTime(city);
 
 
         const apiKey = process.env.AISENSY_API_KEY
             || "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6IjY4NDdiZDI5OGI0YWI1MGMwN2RiYzk4NiIsIm5hbWUiOiJTbGFwcGluIEZvb2RzIFB2dCBMdGQiLCJhcHBOYW1lIjoiQWlTZW5zeSIsImNsaWVudElkIjoiNjg0N2JkMjk4YjRhYjUwYzA3ZGJjOTgxIiwiYWN0aXZlUGxhbiI6IkJBU0lDX1lFQVJMWSIsImlhdCI6MTc4MTc4Nzc0N30.sffbnU3Z9cxUrTQYWQv-mh2vfm_ChWZ1iUDaaWATtE0";
 
-        // IMPORTANT: Change "order_confirmation_v4" to match the EXACT campaign name
+        // IMPORTANT: Change "order_confirmation_v5" to match the EXACT campaign name
         // you create in AiSensy Dashboard
-        const campaignName = process.env.ORDER_CONFIRM_CAMPAIGN || "order_confirmation_v4";
+        const campaignName = process.env.ORDER_CONFIRM_CAMPAIGN || "order_confirmation_v5";
 
         const aisensyData = {
             apiKey: apiKey,
@@ -160,14 +162,13 @@ module.exports = async (req, res) => {
             templateParams: [
                 String(name),                   // {{1}} - Customer First Name
                 String(orderId),                // {{2}} - Order ID (e.g. PPY18583)
-                String(logisticsPartner),        // {{3}} - Logistics Partner (Pikndel/Zippee)
-                String(deliveryTime)             // {{4}} - Delivery timeframe (e.g. "1-2 days")
+                String(logisticsPartner)         // {{3}} - Logistics Partner (Pikndel/Zippee)
             ]
         };
 
         console.log(`[${requestId}] === ORDER CONFIRMATION PAYLOAD ===`);
         console.log(JSON.stringify(aisensyData, null, 2));
-        console.log(`[${requestId}] Sending to ${formattedPhone}: Order ${orderId} for ${name} | City: ${city || 'unknown'} | Partner: ${logisticsPartner} | Delivery: ${deliveryTime}`);
+        console.log(`[${requestId}] Sending to ${formattedPhone}: Order ${orderId} for ${name} | City: ${city || 'unknown'} | Partner: ${logisticsPartner} | Delivery: within a day (hardcoded in template)`);
 
         // ─── Send to AiSensy ─────────────────────────────────────────
         const response = await axios.post('https://backend.aisensy.com/campaign/t1/api/v2', aisensyData);
