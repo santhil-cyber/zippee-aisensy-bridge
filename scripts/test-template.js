@@ -68,6 +68,18 @@ function getTemplateParams(campaign, name, item) {
       // {{1}} = Name (scarcity message is hardcoded in template)
       return [String(name)];
 
+    // Browse-abandon templates (A/B/C test)
+    case 'browse_nudge_trust':
+    case 'browse_nudge_chefpick':
+    case 'browse_nudge_protein':
+      // {{1}} = Name (all browse templates use single param)
+      return [String(name)];
+
+    // Reorder templates
+    case 'reorder_nudge_1_restock':
+    case 'reorder_nudge_4_winback':
+      return [String(name)];
+
     // Legacy templates (for fallback testing)
     case '1st_nudge':
       return [String(name), String(item)];
@@ -78,6 +90,20 @@ function getTemplateParams(campaign, name, item) {
       console.warn(`⚠️ Unknown campaign "${campaign}". Sending [name] as single param.`);
       return [String(name)];
   }
+}
+
+/**
+ * Get media payload for templates that have header images (e.g. browse_nudge_trust).
+ * Returns null if the template doesn't need a media header.
+ */
+function getMediaPayload(campaign) {
+  if (campaign === 'browse_nudge_trust') {
+    return {
+      url: 'https://cdn.shopify.com/s/files/1/0686/7379/8281/files/ChatGPT_Image_Sep_9_2026_02_15_05_AM.png?v=1788901647',
+      filename: 'protein_pantry.png',
+    };
+  }
+  return null;
 }
 
 async function testSend() {
@@ -104,6 +130,13 @@ async function testSend() {
       Trigger_Time: new Date().toISOString()
     }
   };
+
+  // Add media header for templates that require it (e.g. browse_nudge_trust)
+  const media = getMediaPayload(campaignName);
+  if (media) {
+    payload.media = media;
+    console.log(`📎 Media header:  ${media.url}`);
+  }
 
   console.log('📤 Sending payload to AiSensy API...');
   console.log(JSON.stringify(payload, null, 2));
