@@ -147,6 +147,46 @@ Come back anytime — we'll keep it fresh for you 👇
 
 ---
 
+## Template 6: `restock_14d_1` (14-Day Restock — Variant A)
+
+**Used in:** Reorder funnel — Nudge 0 (Day 14 after order, A/B test)
+
+**Body:**
+```
+Hey {{1}}, your Protein Pantry stash might be running low by now.
+
+Time to bring some tasty, clean protein back into the freezer. Your next order is waiting!
+```
+
+**Parameters:**
+- `{{1}}` = Customer First Name
+
+**CTA Button:**
+- Text: `Order Now`
+- URL: `https://proteinpantry.in`
+
+---
+
+## Template 7: `restock_14d_2` (14-Day Restock — Variant B)
+
+**Used in:** Reorder funnel — Nudge 0 (Day 14 after order, A/B test)
+
+**Body:**
+```
+Hey {{1}}, it's been a little while!
+
+Time to stock up on your Protein Pantry favourites and keep those protein goals moving. Your next tasty, high-protein order is just a few clicks away!
+```
+
+**Parameters:**
+- `{{1}}` = Customer First Name
+
+**CTA Button:**
+- Text: `Order Now`
+- URL: `https://proteinpantry.in`
+
+---
+
 ## Summary: What Goes Where
 
 ```
@@ -156,10 +196,12 @@ YOUR EXISTING TEMPLATES (no action needed):
   nudge_3_cart (+_b)    → Cart Tier 1 free shipping
   nudge_4_cart (+_b)    → Cart Tier 1 & 2 urgency
 
-NEW TEMPLATES (create these 5):
-  browse_nudge_trust    → Browse T3/T4/T5 Nudge 1 (Variant A) + T4/T5 follow-up
-  browse_nudge_chefpick → Browse T3/T4/T5 Nudge 1 (Variant B) + all follow-ups + Reorder Day 22
-  browse_nudge_protein  → Browse T3/T4/T5 Nudge 1 (Variant C)
-  reorder_nudge_1_restock  → Reorder Day 15
-  reorder_nudge_4_winback  → Reorder Day 45
+NEW TEMPLATES (create these 7):
+  browse_nudge_trust      → Browse T3/T4/T5 Nudge 1 (Variant A) + T4/T5 follow-up
+  browse_nudge_chefpick   → Browse T3/T4/T5 Nudge 1 (Variant B) + all follow-ups + Reorder Day 22
+  browse_nudge_protein    → Browse T3/T4/T5 Nudge 1 (Variant C)
+  restock_14d_1           → Reorder Day 14 (A/B Variant A) ← NEW
+  restock_14d_2           → Reorder Day 14 (A/B Variant B) ← NEW
+  reorder_nudge_1_restock → Reorder Day 15
+  reorder_nudge_4_winback → Reorder Day 45
 ```

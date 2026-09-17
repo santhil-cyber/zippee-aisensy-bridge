@@ -186,23 +186,23 @@ module.exports = async (req, res) => {
                 last_order_date: new Date().toISOString(),
             });
 
-            const reorderNudge1 = getNudgeConfig('TIER_0_REORDER', 1, formattedPhone);
-            if (reorderNudge1 && reorderLead) {
-                const reorderParams = reorderNudge1.getParams(reorderLead);
-                await enqueueMessage(formattedPhone, 'TIER_0_REORDER', 1, reorderNudge1.delayMs, {
-                    campaignName: reorderNudge1.campaignName,
-                    fallbackCampaign: reorderNudge1.fallbackCampaign,
+            const reorderNudge0 = getNudgeConfig('TIER_0_REORDER', 0, formattedPhone);
+            if (reorderNudge0 && reorderLead) {
+                const reorderParams = reorderNudge0.getParams(reorderLead);
+                await enqueueMessage(formattedPhone, 'TIER_0_REORDER', 0, reorderNudge0.delayMs, {
+                    campaignName: reorderNudge0.campaignName,
+                    fallbackCampaign: reorderNudge0.fallbackCampaign,
                     templateParams: reorderParams,
-                    tags: reorderNudge1.tags,
+                    tags: reorderNudge0.tags,
                     attributes: {
                         Tier: 'TIER_0_REORDER',
-                        Nudge_Number: '1',
+                        Nudge_Number: '0',
                         Order_ID: orderId,
                         City: city,
                     },
                 });
-                await trackCampaignEvent(reorderNudge1.campaignName, 'enqueued', { tier: 'TIER_0_REORDER', nudgeNum: 1 });
-                console.log(`[${requestId}] 🔄 Reorder Nudge 1 enqueued for ${formattedPhone} in ${reorderNudge1.delayMs / (24 * 60 * 60 * 1000)} days.`);
+                await trackCampaignEvent(reorderNudge0.campaignName, 'enqueued', { tier: 'TIER_0_REORDER', nudgeNum: 0 });
+                console.log(`[${requestId}] 🔄 Reorder Nudge 0 (14-day restock A/B) enqueued for ${formattedPhone} in ${reorderNudge0.delayMs / (24 * 60 * 60 * 1000)} days.`);
             }
         } catch (reorderErr) {
             console.warn(`[${requestId}] Non-critical: Failed to enqueue reorder nudge:`, reorderErr.message);

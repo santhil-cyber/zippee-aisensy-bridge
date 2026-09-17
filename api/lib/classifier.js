@@ -144,6 +144,29 @@ const SEQUENCE_CONFIG = {
   // ══════════════════════════════════════════════════════════════════════
   TIER_0_REORDER: [
     {
+      nudgeNum: 0,
+      delayMs: 14 * 24 * 60 * 60 * 1000, // T + 14 days post-order
+      // ── A/B Test: 14-day re-engagement — two copy variants ──
+      variants: {
+        A: {
+          campaignName: 'restock_14d_1',
+          fallbackCampaign: 'browse_nudge_chefpick', // Fallback to live Chef's Picks template
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Reorder', 'Nudge0_Restock14d', 'AB_Variant_A'],
+        },
+        B: {
+          campaignName: 'restock_14d_2',
+          fallbackCampaign: 'browse_nudge_chefpick', // Fallback to live Chef's Picks template
+          getParams: (lead = {}) => [
+            String(lead?.name || 'there'),
+          ],
+          tags: ['Reorder', 'Nudge0_Restock14d', 'AB_Variant_B'],
+        },
+      },
+    },
+    {
       nudgeNum: 1,
       delayMs: 15 * 24 * 60 * 60 * 1000, // T + 15 days post-order
       campaignName: 'reorder_nudge_1_restock',
@@ -612,7 +635,9 @@ function getNudgeConfig(tierKey, nudgeNum = 1, phone = null) {
 
   // If this nudge has variants, resolve the correct one
   if (step.variants) {
-    // Determine whether this is a 3-way (A/B/C) browse-abandon test or 2-way (A/B) cart test
+    // Determine variant assignment strategy:
+    //   - Browse tiers (BROWSER/VISITOR) use 3-way A/B/C split
+    //   - Cart tiers and Reorder tier use 2-way A/B split
     const isBrowseTier = tierKey.includes('BROWSER') || tierKey.includes('VISITOR');
     const variant = isBrowseTier ? getABCVariant(phone) : getABVariant(phone);
     const variantConfig = step.variants[variant] || step.variants['A'];

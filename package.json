@@ -8,7 +8,9 @@
     "simulate": "node scripts/simulate-flow.js",
     "browse-results": "node scripts/browse-ab-results.js",
     "backfill:dry": "node scripts/backfill-csv.js --dry-run",
-    "backfill:live": "node scripts/backfill-csv.js"
+    "backfill:live": "node scripts/backfill-csv.js",
+    "backfill:14d:dry": "node scripts/backfill-14d-restock.js --dry-run",
+    "backfill:14d:live": "node scripts/backfill-14d-restock.js"
   },
   "keywords": [],
   "author": "",

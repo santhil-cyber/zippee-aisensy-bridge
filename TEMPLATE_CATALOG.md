@@ -104,9 +104,31 @@ Grab your favourites now before your cart reservation and discount expire:
 | `browse_nudge_chefpick` | Chef's Picks recommendation | ✅ LIVE in AiSensy |
 | `browse_nudge_protein` | Protein gap education | ⚠️ In Review / Optional (Falls back to `browse_nudge_chefpick`) |
 
-### Category 3: Reorder Templates (Not Yet Created ⚠️)
+### Category 3: Reorder Templates
 
-Currently none exist for reorder.
+#### `restock_14d_1` — 14-Day Restock (Variant A)
+- **Status**: 🆕 New | **Sent**: 0
+- **Params**: `{{1}}` = Name
+- **CTA**: "Order Now"
+```
+Hey {{1}}, your Protein Pantry stash might be running low by now.
+
+Time to bring some tasty, clean protein back into the freezer. Your next order is waiting!
+```
+> **Used in**: Reorder Nudge 0 (Day 14) — A/B Variant A
+
+---
+
+#### `restock_14d_2` — 14-Day Restock (Variant B)
+- **Status**: 🆕 New | **Sent**: 0
+- **Params**: `{{1}}` = Name
+- **CTA**: "Order Now"
+```
+Hey {{1}}, it's been a little while!
+
+Time to stock up on your Protein Pantry favourites and keep those protein goals moving. Your next tasty, high-protein order is just a few clicks away!
+```
+> **Used in**: Reorder Nudge 0 (Day 14) — A/B Variant B
 
 ---
 
@@ -162,6 +184,7 @@ Customer only visited the store
 ```
 Customer placed an order
     │
+    ├── T+14 days ─→ restock_14d_1 / restock_14d_2        (NEW — A/B test)
     ├── T+15 days ─→ reorder_nudge_1_restock               (NEW — needs creation)
     ├── T+22 days ─→ reorder_nudge_2_new_arrival           (NEW — needs creation)
     ├── T+30 days ─→ reorder_nudge_3_loyalty               (NEW — needs creation)
