@@ -150,7 +150,7 @@ const SEQUENCE_CONFIG = {
       variants: {
         A: {
           campaignName: 'restock_14d_1',
-          fallbackCampaign: 'browse_nudge_chefpick', // Fallback to live Chef's Picks template
+          fallbackCampaign: null, // No fallback — only send when restock_14d templates are approved
           getParams: (lead = {}) => [
             String(lead?.name || 'there'),
           ],
@@ -158,7 +158,7 @@ const SEQUENCE_CONFIG = {
         },
         B: {
           campaignName: 'restock_14d_2',
-          fallbackCampaign: 'browse_nudge_chefpick', // Fallback to live Chef's Picks template
+          fallbackCampaign: null, // No fallback — only send when restock_14d templates are approved
           getParams: (lead = {}) => [
             String(lead?.name || 'there'),
           ],

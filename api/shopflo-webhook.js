@@ -109,22 +109,22 @@ module.exports = async (req, res) => {
           last_order_date: new Date().toISOString(),
         });
 
-        const reorderNudge1 = getNudgeConfig('TIER_0_REORDER', 1, phone);
-        if (reorderNudge1 && reorderLead) {
-          const reorderParams = reorderNudge1.getParams(reorderLead);
-          await enqueueMessage(phone, 'TIER_0_REORDER', 1, reorderNudge1.delayMs, {
-            campaignName: reorderNudge1.campaignName,
-            fallbackCampaign: reorderNudge1.fallbackCampaign,
+        const reorderNudge0 = getNudgeConfig('TIER_0_REORDER', 0, phone);
+        if (reorderNudge0 && reorderLead) {
+          const reorderParams = reorderNudge0.getParams(reorderLead);
+          await enqueueMessage(phone, 'TIER_0_REORDER', 0, reorderNudge0.delayMs, {
+            campaignName: reorderNudge0.campaignName,
+            fallbackCampaign: reorderNudge0.fallbackCampaign,
             templateParams: reorderParams,
-            tags: reorderNudge1.tags,
+            tags: reorderNudge0.tags,
             attributes: {
               Tier: 'TIER_0_REORDER',
-              Nudge_Number: '1',
+              Nudge_Number: '0',
               City: city,
             },
           });
-          await trackCampaignEvent(reorderNudge1.campaignName, 'enqueued', { tier: 'TIER_0_REORDER', nudgeNum: 1 });
-          console.log(`[Shopflo Webhook] 🔄 Reorder Nudge 1 enqueued for ${phone}.`);
+          await trackCampaignEvent(reorderNudge0.campaignName, 'enqueued', { tier: 'TIER_0_REORDER', nudgeNum: 0 });
+          console.log(`[Shopflo Webhook] 🔄 Reorder Nudge 0 (14-day restock A/B) enqueued for ${phone}.`);
         }
       } catch (reorderErr) {
         console.warn('[Shopflo Webhook] Non-critical: Reorder enqueue notice:', reorderErr.message);
