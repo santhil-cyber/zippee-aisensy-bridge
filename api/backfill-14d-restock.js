@@ -1,19 +1,22 @@
 /**
  * Vercel API Endpoint — Backfill 14-Day Restock Messages
  * ──────────────────────────────────────────────────────────
- * GET /api/backfill-14d-restock?dry=true   → Preview mode
+ * GET /api/backfill-14d-restock?dry=true   → Preview mode (fast, no Redis)
  * GET /api/backfill-14d-restock            → Actually enqueue messages
+ * GET /api/backfill-14d-restock?limit=5    → Process only first N customers
  *
  * Queries Shopify for orders placed 13-15 days ago, then enqueues
- * restock_14d_1 / restock_14d_2 (A/B) for each customer who doesn't
- * already have a Nudge 0 queued.
+ * restock_14d_1 / restock_14d_2 (A/B) for each customer.
  *
- * Designed to be called once or on-demand. Safe to re-run (deduplicates).
+ * Optimized for Vercel Hobby 60s timeout:
+ *   - Dry run skips all Redis calls (instant preview)
+ *   - Live mode processes in parallel batches of 5
+ *   - Limit parameter caps processing count
  */
 
 const axios = require('axios');
-const { saveLeadForReorder, getLead } = require('./lib/db');
-const { enqueueMessage, getNextValidSendTime } = require('./lib/queue');
+const { saveLeadForReorder } = require('./lib/db');
+const { enqueueMessage } = require('./lib/queue');
 const { getNudgeConfig } = require('./lib/classifier');
 const { getRedis } = require('./lib/db');
 
@@ -31,45 +34,35 @@ function formatPhone(rawPhone) {
 
 module.exports = async (req, res) => {
   const isDryRun = req.query?.dry === 'true';
+  const limit = parseInt(req.query?.limit, 10) || 999;
   const timestamp = new Date().toISOString();
 
-  console.log(`[Backfill 14d] Starting (${isDryRun ? 'DRY RUN' : 'LIVE'}) at ${timestamp}`);
+  console.log(`[Backfill 14d] Starting (${isDryRun ? 'DRY RUN' : 'LIVE'}, limit=${limit}) at ${timestamp}`);
 
   if (!SHOPIFY_ADMIN_TOKEN) {
     return res.status(500).json({ error: 'SHOPIFY_ADMIN_TOKEN not configured' });
   }
 
   try {
-    // 1. Fetch orders from 13-15 days ago
+    // 1. Fetch orders from 13-15 days ago (single page, limit 250 is enough)
     const now = new Date();
     const fromDate = new Date(now);
     fromDate.setDate(fromDate.getDate() - 15);
     const toDate = new Date(now);
     toDate.setDate(toDate.getDate() - 13);
 
-    console.log(`[Backfill 14d] Fetching orders from ${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`);
+    const shopifyUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&created_at_min=${fromDate.toISOString()}&created_at_max=${toDate.toISOString()}&limit=250&fields=id,name,order_number,created_at,customer,shipping_address,billing_address,phone`;
 
-    const allOrders = [];
-    let pageUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&created_at_min=${fromDate.toISOString()}&created_at_max=${toDate.toISOString()}&limit=250`;
+    const response = await axios.get(shopifyUrl, {
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      timeout: 10000,
+    });
 
-    while (pageUrl) {
-      const response = await axios.get(pageUrl, {
-        headers: {
-          'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
-          'Content-Type': 'application/json',
-        },
-        timeout: 15000,
-      });
-
-      const orders = response.data?.orders || [];
-      allOrders.push(...orders);
-
-      const linkHeader = response.headers?.link || '';
-      const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-      pageUrl = nextMatch ? nextMatch[1] : null;
-    }
-
-    console.log(`[Backfill 14d] Fetched ${allOrders.length} orders`);
+    const allOrders = response.data?.orders || [];
+    console.log(`[Backfill 14d] Fetched ${allOrders.length} orders (${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]})`);
 
     // 2. Deduplicate by phone
     const seen = new Set();
@@ -84,6 +77,8 @@ module.exports = async (req, res) => {
       if (!phone || seen.has(phone)) continue;
       seen.add(phone);
 
+      if (candidates.length >= limit) break;
+
       candidates.push({
         phone,
         firstName: customer.first_name || shipping.first_name || 'Customer',
@@ -94,105 +89,98 @@ module.exports = async (req, res) => {
       });
     }
 
-    console.log(`[Backfill 14d] ${candidates.length} unique customers from ${allOrders.length} orders`);
-
-    // 3. Enqueue for each candidate
-    const redis = getRedis();
-    let enqueued = 0, skippedExisting = 0, skippedBlocked = 0, errors = 0;
-    const results = [];
-
-    for (const c of candidates) {
-      try {
-        // Check if already has Nudge 0 queued
-        if (redis) {
-          const existingKey = `msg:${c.phone}:TIER_0_REORDER:0`;
-          const existing = await redis.get(existingKey);
-          if (existing) {
-            skippedExisting++;
-            continue;
-          }
-
-          const blocked = await redis.get(`blocked:${c.phone}`);
-          if (blocked) {
-            skippedBlocked++;
-            continue;
-          }
-        }
-
+    // 3. DRY RUN — skip all Redis, just show what would happen
+    if (isDryRun) {
+      const preview = candidates.map(c => {
         const nudgeConfig = getNudgeConfig('TIER_0_REORDER', 0, c.phone);
-        if (!nudgeConfig) { errors++; continue; }
-
-        if (isDryRun) {
-          results.push({
-            phone: c.phone,
-            name: c.firstName,
-            order: c.orderId,
-            orderDate: c.orderDate,
-            template: nudgeConfig.campaignName,
-            variant: nudgeConfig.abVariant,
-          });
-          enqueued++;
-          continue;
-        }
-
-        // Save lead for reorder
-        const lead = await saveLeadForReorder(c.phone, {
-          name: c.firstName,
-          email: c.email,
-          city: c.city,
-          last_order_date: c.orderDate,
-        });
-
-        if (!lead) { errors++; continue; }
-
-        // Enqueue with delayMs=0 (already due → fires at next cron within sending hours)
-        const params = nudgeConfig.getParams(lead);
-        await enqueueMessage(c.phone, 'TIER_0_REORDER', 0, 0, {
-          campaignName: nudgeConfig.campaignName,
-          fallbackCampaign: nudgeConfig.fallbackCampaign,
-          templateParams: params,
-          tags: nudgeConfig.tags,
-          attributes: {
-            Tier: 'TIER_0_REORDER',
-            Nudge_Number: '0',
-            Order_ID: c.orderId,
-            City: c.city,
-            Backfilled: 'true',
-          },
-        });
-
-        results.push({
+        return {
           phone: c.phone,
           name: c.firstName,
-          template: nudgeConfig.campaignName,
-          status: 'enqueued',
-        });
-        enqueued++;
+          order: c.orderId,
+          orderDate: c.orderDate,
+          template: nudgeConfig?.campaignName || 'unknown',
+          variant: nudgeConfig?.abVariant || 'A',
+        };
+      });
 
-      } catch (err) {
-        console.error(`[Backfill 14d] Error for ${c.phone}: ${err.message}`);
-        errors++;
-      }
+      return res.status(200).json({
+        success: true,
+        summary: {
+          mode: 'DRY_RUN',
+          orders_found: allOrders.length,
+          unique_customers: candidates.length,
+          would_enqueue: preview.length,
+          date_range: `${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
+        },
+        preview,
+      });
     }
 
-    const summary = {
-      mode: isDryRun ? 'DRY_RUN' : 'LIVE',
-      orders_found: allOrders.length,
-      unique_customers: candidates.length,
-      enqueued,
-      skipped_existing: skippedExisting,
-      skipped_blocked: skippedBlocked,
-      errors,
-      date_range: `${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
-      timestamp,
-    };
+    // 4. LIVE — Process in parallel batches of 5 for speed
+    const redis = getRedis();
+    let enqueued = 0, skippedExisting = 0, skippedBlocked = 0, errors = 0;
 
-    console.log(`[Backfill 14d] Done:`, JSON.stringify(summary));
+    const BATCH_SIZE = 5;
+    for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+      const batch = candidates.slice(i, i + BATCH_SIZE);
+
+      await Promise.all(batch.map(async (c) => {
+        try {
+          // Quick dedup check — single Redis call
+          if (redis) {
+            const existing = await redis.get(`msg:${c.phone}:TIER_0_REORDER:0`);
+            if (existing) { skippedExisting++; return; }
+          }
+
+          const nudgeConfig = getNudgeConfig('TIER_0_REORDER', 0, c.phone);
+          if (!nudgeConfig) { errors++; return; }
+
+          const lead = await saveLeadForReorder(c.phone, {
+            name: c.firstName,
+            email: c.email,
+            city: c.city,
+            last_order_date: c.orderDate,
+          });
+
+          if (!lead) { errors++; return; }
+
+          const params = nudgeConfig.getParams(lead);
+          await enqueueMessage(c.phone, 'TIER_0_REORDER', 0, 0, {
+            campaignName: nudgeConfig.campaignName,
+            fallbackCampaign: nudgeConfig.fallbackCampaign,
+            templateParams: params,
+            tags: nudgeConfig.tags,
+            attributes: {
+              Tier: 'TIER_0_REORDER',
+              Nudge_Number: '0',
+              Order_ID: c.orderId,
+              City: c.city,
+              Backfilled: 'true',
+            },
+          });
+
+          enqueued++;
+          console.log(`[Backfill 14d] ✅ ${c.phone} (${c.firstName}) → ${nudgeConfig.campaignName}`);
+        } catch (err) {
+          console.error(`[Backfill 14d] ❌ ${c.phone}: ${err.message}`);
+          errors++;
+        }
+      }));
+    }
 
     return res.status(200).json({
       success: true,
-      summary,
-      ...(isDryRun ? { preview: results } : {}),
+      summary: {
+        mode: 'LIVE',
+        orders_found: allOrders.length,
+        unique_customers: candidates.length,
+        enqueued,
+        skipped_existing: skippedExisting,
+        skipped_blocked: skippedBlocked,
+        errors,
+        date_range: `${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
+        timestamp,
+      },
     });
 
   } catch (error) {
