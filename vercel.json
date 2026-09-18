@@ -3,6 +3,10 @@
     {
       "path": "/api/cron-retarget",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/backfill-14d-restock",
+      "schedule": "0 3 * * *"
     }
   ]
 }
