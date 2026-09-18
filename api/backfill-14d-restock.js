@@ -1,17 +1,16 @@
 /**
- * Vercel API Endpoint — Backfill 14-Day Restock Messages
- * ──────────────────────────────────────────────────────────
- * GET /api/backfill-14d-restock?dry=true   → Preview mode (fast, no Redis)
- * GET /api/backfill-14d-restock            → Actually enqueue messages
- * GET /api/backfill-14d-restock?limit=5    → Process only first N customers
+ * Vercel API Endpoint — Daily 14-Day Restock Backfill
+ * ──────────────────────────────────────────────────────
+ * GET /api/backfill-14d-restock?dry=true     → Preview (no Redis)
+ * GET /api/backfill-14d-restock              → Enqueue messages
+ * GET /api/backfill-14d-restock?limit=20     → Process only first 20
+ * GET /api/backfill-14d-restock?offset=20    → Skip first 20 (for pagination)
  *
- * Queries Shopify for orders placed 13-15 days ago, then enqueues
+ * Queries Shopify for orders placed EXACTLY 14 days ago, then enqueues
  * restock_14d_1 / restock_14d_2 (A/B) for each customer.
  *
- * Optimized for Vercel Hobby 60s timeout:
- *   - Dry run skips all Redis calls (instant preview)
- *   - Live mode processes in parallel batches of 5
- *   - Limit parameter caps processing count
+ * Designed to run daily via Vercel Cron at 8:30 AM IST (3:00 UTC).
+ * Messages enqueue with delayMs=0 → cron-retarget picks them up at next 15-min run.
  */
 
 const axios = require('axios');
@@ -34,24 +33,33 @@ function formatPhone(rawPhone) {
 
 module.exports = async (req, res) => {
   const isDryRun = req.query?.dry === 'true';
-  const limit = parseInt(req.query?.limit, 10) || 999;
+  const limit = parseInt(req.query?.limit, 10) || 30;  // Default 30 per call (safe for 60s)
+  const offset = parseInt(req.query?.offset, 10) || 0;
   const timestamp = new Date().toISOString();
 
-  console.log(`[Backfill 14d] Starting (${isDryRun ? 'DRY RUN' : 'LIVE'}, limit=${limit}) at ${timestamp}`);
+  console.log(`[Backfill 14d] ${isDryRun ? 'DRY RUN' : 'LIVE'} | limit=${limit} offset=${offset} | ${timestamp}`);
 
   if (!SHOPIFY_ADMIN_TOKEN) {
     return res.status(500).json({ error: 'SHOPIFY_ADMIN_TOKEN not configured' });
   }
 
   try {
-    // 1. Fetch orders from 13-15 days ago (single page, limit 250 is enough)
+    // Exactly 14 days ago — single day window
     const now = new Date();
-    const fromDate = new Date(now);
-    fromDate.setDate(fromDate.getDate() - 15);
-    const toDate = new Date(now);
-    toDate.setDate(toDate.getDate() - 13);
+    const targetDate = new Date(now);
+    targetDate.setDate(targetDate.getDate() - 14);
 
-    const shopifyUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&created_at_min=${fromDate.toISOString()}&created_at_max=${toDate.toISOString()}&limit=250&fields=id,name,order_number,created_at,customer,shipping_address,billing_address,phone`;
+    // Set to start and end of that day in IST (UTC+5:30)
+    const dayStart = new Date(targetDate);
+    dayStart.setHours(0, 0, 0, 0);
+    const dayEnd = new Date(targetDate);
+    dayEnd.setHours(23, 59, 59, 999);
+
+    const dateLabel = dayStart.toISOString().split('T')[0];
+    console.log(`[Backfill 14d] Target date: ${dateLabel} (orders from exactly 14 days ago)`);
+
+    // Fetch orders for that single day
+    const shopifyUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&created_at_min=${dayStart.toISOString()}&created_at_max=${dayEnd.toISOString()}&limit=250&fields=id,name,order_number,created_at,customer,shipping_address,billing_address,phone`;
 
     const response = await axios.get(shopifyUrl, {
       headers: {
@@ -62,11 +70,10 @@ module.exports = async (req, res) => {
     });
 
     const allOrders = response.data?.orders || [];
-    console.log(`[Backfill 14d] Fetched ${allOrders.length} orders (${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]})`);
 
-    // 2. Deduplicate by phone
+    // Deduplicate by phone
     const seen = new Set();
-    const candidates = [];
+    const allCandidates = [];
 
     for (const order of allOrders) {
       const customer = order.customer || {};
@@ -77,9 +84,7 @@ module.exports = async (req, res) => {
       if (!phone || seen.has(phone)) continue;
       seen.add(phone);
 
-      if (candidates.length >= limit) break;
-
-      candidates.push({
+      allCandidates.push({
         phone,
         firstName: customer.first_name || shipping.first_name || 'Customer',
         city: shipping.city || '',
@@ -89,36 +94,30 @@ module.exports = async (req, res) => {
       });
     }
 
-    // 3. DRY RUN — skip all Redis, just show what would happen
+    // Apply offset + limit for pagination
+    const candidates = allCandidates.slice(offset, offset + limit);
+    const hasMore = (offset + limit) < allCandidates.length;
+    const nextOffset = offset + limit;
+
+    console.log(`[Backfill 14d] ${allOrders.length} orders → ${allCandidates.length} unique → processing ${candidates.length} (offset=${offset})`);
+
+    // DRY RUN — no Redis
     if (isDryRun) {
       const preview = candidates.map(c => {
-        const nudgeConfig = getNudgeConfig('TIER_0_REORDER', 0, c.phone);
-        return {
-          phone: c.phone,
-          name: c.firstName,
-          order: c.orderId,
-          orderDate: c.orderDate,
-          template: nudgeConfig?.campaignName || 'unknown',
-          variant: nudgeConfig?.abVariant || 'A',
-        };
+        const cfg = getNudgeConfig('TIER_0_REORDER', 0, c.phone);
+        return { phone: c.phone, name: c.firstName, order: c.orderId, orderDate: c.orderDate, template: cfg?.campaignName };
       });
 
       return res.status(200).json({
         success: true,
-        summary: {
-          mode: 'DRY_RUN',
-          orders_found: allOrders.length,
-          unique_customers: candidates.length,
-          would_enqueue: preview.length,
-          date_range: `${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
-        },
+        summary: { mode: 'DRY_RUN', target_date: dateLabel, orders_found: allOrders.length, unique_customers: allCandidates.length, showing: candidates.length, offset, has_more: hasMore, next_offset: hasMore ? nextOffset : null },
         preview,
       });
     }
 
-    // 4. LIVE — Process in parallel batches of 5 for speed
+    // LIVE — Process in parallel batches of 5
     const redis = getRedis();
-    let enqueued = 0, skippedExisting = 0, skippedBlocked = 0, errors = 0;
+    let enqueued = 0, skippedExisting = 0, errors = 0;
 
     const BATCH_SIZE = 5;
     for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
@@ -126,7 +125,7 @@ module.exports = async (req, res) => {
 
       await Promise.all(batch.map(async (c) => {
         try {
-          // Quick dedup check — single Redis call
+          // Dedup: skip if Nudge 0 already exists
           if (redis) {
             const existing = await redis.get(`msg:${c.phone}:TIER_0_REORDER:0`);
             if (existing) { skippedExisting++; return; }
@@ -136,31 +135,19 @@ module.exports = async (req, res) => {
           if (!nudgeConfig) { errors++; return; }
 
           const lead = await saveLeadForReorder(c.phone, {
-            name: c.firstName,
-            email: c.email,
-            city: c.city,
-            last_order_date: c.orderDate,
+            name: c.firstName, email: c.email, city: c.city, last_order_date: c.orderDate,
           });
-
           if (!lead) { errors++; return; }
 
-          const params = nudgeConfig.getParams(lead);
           await enqueueMessage(c.phone, 'TIER_0_REORDER', 0, 0, {
             campaignName: nudgeConfig.campaignName,
             fallbackCampaign: nudgeConfig.fallbackCampaign,
-            templateParams: params,
+            templateParams: nudgeConfig.getParams(lead),
             tags: nudgeConfig.tags,
-            attributes: {
-              Tier: 'TIER_0_REORDER',
-              Nudge_Number: '0',
-              Order_ID: c.orderId,
-              City: c.city,
-              Backfilled: 'true',
-            },
+            attributes: { Tier: 'TIER_0_REORDER', Nudge_Number: '0', Order_ID: c.orderId, City: c.city, Backfilled: 'true' },
           });
 
           enqueued++;
-          console.log(`[Backfill 14d] ✅ ${c.phone} (${c.firstName}) → ${nudgeConfig.campaignName}`);
         } catch (err) {
           console.error(`[Backfill 14d] ❌ ${c.phone}: ${err.message}`);
           errors++;
@@ -172,13 +159,16 @@ module.exports = async (req, res) => {
       success: true,
       summary: {
         mode: 'LIVE',
+        target_date: dateLabel,
         orders_found: allOrders.length,
-        unique_customers: candidates.length,
+        unique_customers: allCandidates.length,
+        processed: candidates.length,
         enqueued,
         skipped_existing: skippedExisting,
-        skipped_blocked: skippedBlocked,
         errors,
-        date_range: `${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]}`,
+        offset,
+        has_more: hasMore,
+        next_offset: hasMore ? nextOffset : null,
         timestamp,
       },
     });
