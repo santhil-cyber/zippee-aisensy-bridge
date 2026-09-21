@@ -108,27 +108,28 @@ module.exports = async (req, res) => {
       }
 
       // ── Step B: Live Purchase Check via Shopify Admin API ──
-      const hasBought = await hasPlacedOrder(phone, lead?.email, lead?.enrolled_at);
+      // SKIP for TIER_0_REORDER — these customers already bought, no need to re-check Shopify.
+      // This saves ~2s per message and prevents Vercel 60s timeout.
+      if (tier !== 'TIER_0_REORDER') {
+        const hasBought = await hasPlacedOrder(phone, lead?.email, lead?.enrolled_at);
 
-      if (hasBought) {
-        console.log(`[Cron] 🎉 Lead ${phone} has placed an order in Shopify! Marking CONVERTED.`);
-        await markConverted(phone);
-        await cancelAllMessagesForPhone(phone);
-        await removeMessage(memberKey);
+        if (hasBought) {
+          console.log(`[Cron] 🎉 Lead ${phone} has placed an order in Shopify! Marking CONVERTED.`);
+          await markConverted(phone);
+          await cancelAllMessagesForPhone(phone);
+          await removeMessage(memberKey);
 
-        // Sync conversion tag to AiSensy
-        await axios.post(AISENSY_URL, {
-          apiKey: AISENSY_API_KEY,
-          campaignName: 'shopflo_conversion_sync',
-          destination: phone,
-          userName: lead?.name || 'Customer',
-          tags: ['Customer_Converted', 'Recovered_via_WhatsApp'],
-          attributes: { Last_Order_Date: timestamp },
-        }).catch(() => {});
+          // Sync conversion tag to AiSensy
+          await axios.post(AISENSY_URL, {
+            apiKey: AISENSY_API_KEY,
+            campaignName: 'shopflo_conversion_sync',
+            destination: phone,
+            userName: lead?.name || 'Customer',
+            tags: ['Customer_Converted', 'Recovered_via_WhatsApp'],
+            attributes: { Last_Order_Date: timestamp },
+          }).catch(() => {});
 
-        // ── REORDER FUNNEL: Enqueue reorder nudge if not already in reorder tier ──
-        // Avoid infinite loop: don't re-enqueue reorder from within a reorder nudge
-        if (tier !== 'TIER_0_REORDER') {
+          // ── REORDER FUNNEL: Enqueue reorder nudge for converted lead ──
           try {
             const reorderLead = await saveLeadForReorder(phone, {
               name: lead?.name || 'Customer',
@@ -155,11 +156,11 @@ module.exports = async (req, res) => {
           } catch (reorderErr) {
             console.warn(`[Cron] Non-critical: Reorder enqueue failed for ${phone}:`, reorderErr.message);
           }
-        }
 
-        await trackCampaignEvent(campaignName, 'converted', { tier, nudgeNum });
-        results.converted++;
-        continue;
+          await trackCampaignEvent(campaignName, 'converted', { tier, nudgeNum });
+          results.converted++;
+          continue;
+        }
       }
 
       // ── Step B2: Skip coupon nudges for returning customers ──
