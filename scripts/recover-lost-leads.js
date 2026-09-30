@@ -17,9 +17,25 @@
  *   - SHOPIFY_ADMIN_TOKEN must be set in environment
  *   - KV_REST_API_URL and KV_REST_API_TOKEN must be set
  */
+const fs = require('fs');
+const path = require('path');
 
-require('dotenv').config();
+// Load environment variables safely (supports dotenv if installed, falls back to manual loader)
+try {
+  require('dotenv').config();
+} catch (_) {}
 
+function loadEnvFile(envPath) {
+  if (!fs.existsSync(envPath)) return;
+  fs.readFileSync(envPath, 'utf8').split('\n').forEach(line => {
+    const match = line.match(/^([^#=]+)=["']?(.+?)["']?\s*$/);
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = match[2];
+    }
+  });
+}
+loadEnvFile(path.join(__dirname, '../.env'));
+loadEnvFile(path.join(__dirname, '../.env.local'));
 const axios = require('axios');
 const { saveLead, getLead } = require('../api/lib/db');
 const { enqueueMessage } = require('../api/lib/queue');
@@ -189,4 +205,8 @@ async function main() {
   }
 }
 
-main().catch(console.error);
+if (require.main === module) {
+  main().catch(console.error);
+}
+
+module.exports = { main };

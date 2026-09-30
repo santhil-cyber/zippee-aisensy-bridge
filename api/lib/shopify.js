@@ -170,8 +170,64 @@ async function findOrder(orderIdentifier) {
   }
 }
 
+/**
+ * Find the latest order for a customer by phone number
+ * @param {string} phone
+ * @returns {Promise<object|null>}
+ */
+async function findOrderByPhone(phone) {
+  if (!SHOPIFY_ADMIN_TOKEN || !phone) return null;
+  try {
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const phoneQuery = cleanPhone.slice(-10);
+    if (!phoneQuery) return null;
+
+    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&query=${encodeURIComponent(`phone:*${phoneQuery}*`)}&limit=5`;
+    const response = await axios.get(url, {
+      headers: {
+        'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      timeout: 6000,
+    });
+
+    const allOrders = response.data?.orders || [];
+    const matched = allOrders.find(order => {
+      const orderPhones = [
+        order.shipping_address?.phone,
+        order.billing_address?.phone,
+        order.customer?.phone,
+        order.customer?.default_address?.phone,
+        order.phone,
+      ].filter(Boolean).map(p => p.replace(/\D/g, ''));
+      return orderPhones.some(p => p.includes(phoneQuery));
+    });
+
+    if (matched) {
+      const customer = matched.customer || {};
+      const shipping = matched.shipping_address || matched.billing_address || {};
+      const firstName = customer.first_name || shipping.first_name || 'Customer';
+      const rawPhone = shipping.phone || customer.phone || customer.default_address?.phone || matched.phone;
+      const city = shipping.city || customer.default_address?.city || '';
+
+      return {
+        orderId: matched.name || `#${matched.order_number}` || String(matched.id),
+        orderNumber: String(matched.order_number || ''),
+        customerName: firstName,
+        customerPhone: rawPhone,
+        city: city,
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error(`[Shopify Find Order By Phone Error for ${phone}]:`, error.message);
+    return null;
+  }
+}
+
 module.exports = {
   hasPlacedOrder,
   findOrder,
+  findOrderByPhone,
 };
 

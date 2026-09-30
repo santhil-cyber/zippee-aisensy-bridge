@@ -15,7 +15,7 @@
  * Returns a unified order status card for the chatbot widget.
  */
 
-const { findOrder } = require('./lib/shopify');
+const { findOrder, findOrderByPhone } = require('./lib/shopify');
 const { getLead } = require('./lib/db');
 
 module.exports = async (req, res) => {
@@ -76,9 +76,8 @@ module.exports = async (req, res) => {
       if (!orderResult) {
         // Try to find recent orders for this phone via Shopify search
         try {
-          const { hasPlacedOrder } = require('./lib/shopify');
-          const hasOrder = await hasPlacedOrder(cleanPhone, null, null);
-          if (hasOrder) {
+          orderResult = await findOrderByPhone(cleanPhone);
+          if (orderResult) {
             source = 'shopify-phone';
           }
         } catch (shopErr) {

@@ -59,7 +59,7 @@ module.exports = async (req, res) => {
     console.log(`[Backfill 14d] Target date: ${dateLabel} (orders from exactly 14 days ago)`);
 
     // Fetch orders for that single day
-    const shopifyUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&created_at_min=${dayStart.toISOString()}&created_at_max=${dayEnd.toISOString()}&limit=250&fields=id,name,order_number,created_at,customer,shipping_address,billing_address,phone`;
+    const shopifyUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&created_at_min=${dayStart.toISOString()}&created_at_max=${dayEnd.toISOString()}&limit=250&fields=id,name,order_number,created_at,customer,shipping_address,billing_address,phone`;
 
     const response = await axios.get(shopifyUrl, {
       headers: {
