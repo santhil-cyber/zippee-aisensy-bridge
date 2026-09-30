@@ -64,7 +64,7 @@ async function main() {
   // ── 2. Basic API Connectivity — Fetch recent orders ──
   console.log('2️⃣  API CONNECTIVITY — Fetching recent orders');
   try {
-    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&limit=5`;
+    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&limit=5`;
     const res = await axios.get(url, {
       headers: {
         'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
@@ -108,7 +108,7 @@ async function main() {
     // Use a phone from recent orders to demonstrate the check works
     console.log('\n3️⃣  RETURNING CUSTOMER CHECK — Using phone from latest order');
     try {
-      const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&limit=1`;
+      const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&limit=1`;
       const res = await axios.get(url, {
         headers: { 'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
         timeout: 10000,
@@ -156,7 +156,7 @@ async function checkCustomerOrders(phone) {
   const phoneQuery = cleanPhone.slice(-10);
 
   try {
-    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&query=${encodeURIComponent(`phone:*${phoneQuery}*`)}&limit=10`;
+    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&query=${encodeURIComponent(`phone:*${phoneQuery}*`)}&limit=10`;
     const res = await axios.get(url, {
       headers: { 'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
       timeout: 10000,

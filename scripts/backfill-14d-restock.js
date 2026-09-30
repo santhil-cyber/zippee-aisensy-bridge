@@ -65,7 +65,7 @@ async function fetchOrdersFromDaysAgo(targetDays = 14, windowDays = 1) {
   console.log(`📅 Fetching orders from ${fromDate.toISOString().split('T')[0]} to ${toDate.toISOString().split('T')[0]} (${targetDays} ± ${windowDays} days ago)`);
 
   const allOrders = [];
-  let pageUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&created_at_min=${fromDate.toISOString()}&created_at_max=${toDate.toISOString()}&limit=250`;
+  let pageUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&created_at_min=${fromDate.toISOString()}&created_at_max=${toDate.toISOString()}&limit=250`;
 
   while (pageUrl) {
     const response = await axios.get(pageUrl, {

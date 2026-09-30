@@ -8,5 +8,13 @@
       "path": "/api/backfill-14d-restock",
       "schedule": "0 3 * * *"
     }
-  ]
+  ],
+  "functions": {
+    "api/cron-retarget.js": {
+      "maxDuration": 60
+    },
+    "api/backfill-14d-restock.js": {
+      "maxDuration": 60
+    }
+  }
 }

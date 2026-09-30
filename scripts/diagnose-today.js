@@ -153,7 +153,7 @@ async function main() {
       const cleanPhone = phone.replace(/\D/g, '');
       const phoneQuery = cleanPhone.slice(-10);
       try {
-        const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&query=${encodeURIComponent(`phone:*${phoneQuery}*`)}&limit=5`;
+        const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&query=${encodeURIComponent(`phone:*${phoneQuery}*`)}&limit=5`;
         const res = await axios.get(url, {
           headers: { 'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN, 'Content-Type': 'application/json' },
           timeout: 8000,
