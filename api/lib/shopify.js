@@ -147,20 +147,7 @@ async function findOrder(orderIdentifier) {
     }
 
     if (orders.length > 0) {
-      const order = orders[0];
-      const customer = order.customer || {};
-      const shipping = order.shipping_address || order.billing_address || {};
-      const firstName = customer.first_name || shipping.first_name || 'Customer';
-      const rawPhone = shipping.phone || customer.phone || customer.default_address?.phone || order.phone;
-      const city = shipping.city || customer.default_address?.city || '';
-
-      return {
-        orderId: order.name || `#${order.order_number}` || String(order.id),
-        orderNumber: String(order.order_number || ''),
-        customerName: firstName,
-        customerPhone: rawPhone,
-        city: city,
-      };
+      return formatOrderResult(orders[0]);
     }
 
     return null;
@@ -204,25 +191,57 @@ async function findOrderByPhone(phone) {
     });
 
     if (matched) {
-      const customer = matched.customer || {};
-      const shipping = matched.shipping_address || matched.billing_address || {};
-      const firstName = customer.first_name || shipping.first_name || 'Customer';
-      const rawPhone = shipping.phone || customer.phone || customer.default_address?.phone || matched.phone;
-      const city = shipping.city || customer.default_address?.city || '';
-
-      return {
-        orderId: matched.name || `#${matched.order_number}` || String(matched.id),
-        orderNumber: String(matched.order_number || ''),
-        customerName: firstName,
-        customerPhone: rawPhone,
-        city: city,
-      };
+      return formatOrderResult(matched);
     }
     return null;
   } catch (error) {
     console.error(`[Shopify Find Order By Phone Error for ${phone}]:`, error.message);
     return null;
   }
+}
+
+/**
+ * Format Shopify Order JSON into unified order details
+ */
+function formatOrderResult(order) {
+  const customer = order.customer || {};
+  const shipping = order.shipping_address || order.billing_address || {};
+  const firstName = customer.first_name || shipping.first_name || 'Customer';
+  const rawPhone = shipping.phone || customer.phone || customer.default_address?.phone || order.phone;
+  const city = shipping.city || customer.default_address?.city || '';
+  const province = shipping.province || customer.default_address?.province || '';
+
+  const items = (order.line_items || []).map(item => ({
+    title: item.title,
+    quantity: item.quantity,
+    price: item.price,
+  }));
+
+  const fulfillments = (order.fulfillments || []).map(f => ({
+    status: f.status,
+    shipmentStatus: f.shipment_status,
+    trackingCompany: f.tracking_company,
+    trackingNumber: f.tracking_number,
+    trackingUrl: f.tracking_url,
+    updatedAt: f.updated_at,
+  }));
+
+  return {
+    orderId: order.name || `#${order.order_number}` || String(order.id),
+    orderNumber: String(order.order_number || ''),
+    customerName: firstName,
+    customerPhone: rawPhone,
+    city: city,
+    province: province,
+    createdAt: order.created_at,
+    financialStatus: order.financial_status,
+    fulfillmentStatus: order.fulfillment_status,
+    cancelledAt: order.cancelled_at,
+    cancelReason: order.cancel_reason,
+    totalPrice: order.total_price,
+    items: items,
+    fulfillments: fulfillments,
+  };
 }
 
 module.exports = {
