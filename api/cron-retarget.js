@@ -94,6 +94,9 @@ module.exports = async (req, res) => {
       });
     }
 
+    let shopifyChecks = 0;
+    const MAX_SHOPIFY_CHECKS = 8; // Cap live Shopify lookups to stay under Vercel 60s timeout
+
     for (const msg of dueMessages) {
       const { memberKey, phone, tier, nudgeNum, campaignName, fallbackCampaign, mediaUrl, templateParams, tags, attributes } = msg;
 
@@ -111,7 +114,13 @@ module.exports = async (req, res) => {
       // SKIP for TIER_0_REORDER — these customers already bought, no need to re-check Shopify.
       // This saves ~2s per message and prevents Vercel 60s timeout.
       if (tier !== 'TIER_0_REORDER') {
+        // Cap Shopify API calls per cron run to prevent Vercel 60s timeout
+        if (shopifyChecks >= MAX_SHOPIFY_CHECKS) {
+          console.log(`[Cron] Shopify API check limit (${MAX_SHOPIFY_CHECKS}) reached. Deferring ${phone} to next cron cycle.`);
+          continue; // Leave message in queue, pick up in 20 minutes
+        }
         const hasBought = await hasPlacedOrder(phone, lead?.email, lead?.enrolled_at);
+        shopifyChecks++;
 
         if (hasBought) {
           console.log(`[Cron] 🎉 Lead ${phone} has placed an order in Shopify! Marking CONVERTED.`);
@@ -130,28 +139,34 @@ module.exports = async (req, res) => {
           }).catch(() => {});
 
           // ── REORDER FUNNEL: Enqueue reorder nudge for converted lead ──
+          // Guard: Skip if order-confirmation.js already enrolled this lead
           try {
-            const reorderLead = await saveLeadForReorder(phone, {
-              name: lead?.name || 'Customer',
-              email: lead?.email || '',
-              city: lead?.city || '',
-              last_order_date: new Date().toISOString(),
-            });
-
-            const reorderNudge0 = getNudgeConfig('TIER_0_REORDER', 0, phone);
-            if (reorderNudge0 && reorderLead) {
-              const reorderParams = reorderNudge0.getParams(reorderLead);
-              await enqueueMessage(phone, 'TIER_0_REORDER', 0, reorderNudge0.delayMs, {
-                campaignName: reorderNudge0.campaignName,
-                fallbackCampaign: reorderNudge0.fallbackCampaign,
-                templateParams: reorderParams,
-                tags: reorderNudge0.tags,
-                attributes: {
-                  Tier: 'TIER_0_REORDER',
-                  Nudge_Number: '0',
-                },
+            const freshLead = await getLead(phone);
+            if (freshLead?.tier === 'TIER_0_REORDER' && freshLead?.status === 'ACTIVE') {
+              console.log(`[Cron] Lead ${phone} already enrolled in TIER_0_REORDER by order-confirmation. Skipping duplicate.`);
+            } else {
+              const reorderLead = await saveLeadForReorder(phone, {
+                name: lead?.name || 'Customer',
+                email: lead?.email || '',
+                city: lead?.city || '',
+                last_order_date: new Date().toISOString(),
               });
-              console.log(`[Cron] 🔄 Reorder Nudge 0 (14-day restock A/B) enqueued for converted lead ${phone}.`);
+
+              const reorderNudge0 = getNudgeConfig('TIER_0_REORDER', 0, phone);
+              if (reorderNudge0 && reorderLead) {
+                const reorderParams = reorderNudge0.getParams(reorderLead);
+                await enqueueMessage(phone, 'TIER_0_REORDER', 0, reorderNudge0.delayMs, {
+                  campaignName: reorderNudge0.campaignName,
+                  fallbackCampaign: reorderNudge0.fallbackCampaign,
+                  templateParams: reorderParams,
+                  tags: reorderNudge0.tags,
+                  attributes: {
+                    Tier: 'TIER_0_REORDER',
+                    Nudge_Number: '0',
+                  },
+                });
+                console.log(`[Cron] Reorder Nudge 0 (14-day restock A/B) enqueued for converted lead ${phone}.`);
+              }
             }
           } catch (reorderErr) {
             console.warn(`[Cron] Non-critical: Reorder enqueue failed for ${phone}:`, reorderErr.message);

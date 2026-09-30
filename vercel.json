@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron-retarget",
-      "schedule": "*/15 * * * *"
+      "schedule": "*/20 3-15 * * *"
     },
     {
       "path": "/api/backfill-14d-restock",

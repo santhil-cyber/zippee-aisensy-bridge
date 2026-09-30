@@ -36,7 +36,7 @@ async function hasPlacedOrder(phone, email, sinceDate) {
 
     if (!query) return false;
 
-    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&query=${encodeURIComponent(query)}&limit=10`;
+    const url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&query=${encodeURIComponent(query)}&limit=10`;
 
     const response = await axios.get(url, {
       headers: {
@@ -105,7 +105,7 @@ async function findOrder(orderIdentifier) {
     const cleanNoHash = cleanId.replace(/^#/, '');
 
     // 1. Try querying by order name
-    let url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&name=${encodeURIComponent(cleanId)}&limit=1`;
+    let url = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&name=${encodeURIComponent(cleanId)}&limit=1`;
     let response = await axios.get(url, {
       headers: {
         'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
@@ -118,7 +118,7 @@ async function findOrder(orderIdentifier) {
 
     // 2. If not found, try search query
     if (orders.length === 0 && cleanNoHash) {
-      const searchUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders.json?status=any&query=name:${encodeURIComponent(cleanNoHash)}&limit=1`;
+      const searchUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders.json?status=any&query=name:${encodeURIComponent(cleanNoHash)}&limit=1`;
       const searchRes = await axios.get(searchUrl, {
         headers: {
           'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,
@@ -132,7 +132,7 @@ async function findOrder(orderIdentifier) {
     // 3. If still not found and cleanId is numeric, try order ID directly
     if (orders.length === 0 && /^\d+$/.test(cleanId)) {
       try {
-        const idUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-01/orders/${cleanId}.json`;
+        const idUrl = `https://${SHOPIFY_STORE_DOMAIN}/admin/api/2024-10/orders/${cleanId}.json`;
         const idRes = await axios.get(idUrl, {
           headers: {
             'X-Shopify-Access-Token': SHOPIFY_ADMIN_TOKEN,

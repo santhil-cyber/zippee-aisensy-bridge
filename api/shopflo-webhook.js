@@ -215,6 +215,13 @@ module.exports = async (req, res) => {
     try {
       leadProfile = await saveLead(leadData);
     } catch (saveErr) {
+      // If Redis is genuinely down (quota exceeded or connection refused),
+      // return 503 so Shopflo retries the webhook instead of losing the lead forever
+      const errMsg = String(saveErr.message || '').toLowerCase();
+      if (errMsg.includes('max requests limit') || errMsg.includes('econnrefused') || errMsg.includes('limit exceeded')) {
+        console.error('[Shopflo Webhook] Redis is DOWN. Returning 503 for Shopflo retry.', saveErr.message);
+        return res.status(503).json({ error: 'Database temporarily unavailable. Please retry.', retry: true });
+      }
       console.warn('[Shopflo Webhook] DB save notice:', saveErr.message);
     }
     leadProfile = leadProfile || leadData;

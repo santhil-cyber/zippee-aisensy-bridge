@@ -135,9 +135,13 @@ async function getActiveLeads() {
   const phones = await redis.smembers('set:active_leads');
   if (!phones || phones.length === 0) return [];
 
+  // Batch fetch all leads in a single mget call instead of N individual gets
+  const keys = phones.map(phone => `lead:${phone}`);
+  const items = await redis.mget(...keys);
+
   const leads = [];
-  for (const phone of phones) {
-    const data = await redis.get(`lead:${phone}`);
+  for (let i = 0; i < items.length; i++) {
+    const data = items[i];
     if (data && data.status === 'ACTIVE') {
       leads.push(data);
     }

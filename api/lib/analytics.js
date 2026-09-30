@@ -16,42 +16,24 @@ async function trackCampaignEvent(campaignName, event, metadata = {}) {
   const redis = getRedis();
   if (!redis || !campaignName) return;
 
-  const now = new Date();
-  const dateKey = now.toISOString().split('T')[0]; // YYYY-MM-DD
-  const hourKey = `${dateKey}_${String(now.getUTCHours()).padStart(2, '0')}`;
-
   try {
     const pipeline = redis.pipeline();
 
-    // 1. Overall campaign counters
-    pipeline.hincrby(`analytics:campaign:${campaignName}`, event, 1);
-    pipeline.hincrby(`analytics:campaign:${campaignName}:${dateKey}`, event, 1);
-    pipeline.hincrby(`analytics:hourly:${hourKey}`, event, 1);
+    // 1. Global metric
+    pipeline.hincrby('analytics:global', event, 1);
 
-    // 2. Tier-specific counters
+    // 2. Per-campaign counter
+    pipeline.hincrby(`analytics:campaign:${campaignName}`, event, 1);
+
+    // 3. Per-tier counter (if applicable)
     if (metadata.tier) {
       pipeline.hincrby(`analytics:tier:${metadata.tier}`, event, 1);
-      pipeline.hincrby(`analytics:tier:${metadata.tier}:${dateKey}`, event, 1);
     }
 
-    // 3. A/B variant-specific counters (for comparing variant A vs B performance)
+    // 4. A/B variant aggregate (if applicable — for comparing variant performance)
     if (metadata.abVariant) {
-      const variant = metadata.abVariant; // 'A' or 'B'
-      pipeline.hincrby(`analytics:ab:${campaignName}:${variant}`, event, 1);
-      pipeline.hincrby(`analytics:ab:${campaignName}:${variant}:${dateKey}`, event, 1);
-      // Aggregate across all campaigns for this variant
-      pipeline.hincrby(`analytics:ab:variant_${variant}`, event, 1);
-      pipeline.hincrby(`analytics:ab:variant_${variant}:${dateKey}`, event, 1);
-      // Per-nudge variant tracking
-      if (metadata.nudgeNum) {
-        pipeline.hincrby(`analytics:ab:nudge_${metadata.nudgeNum}:${variant}`, event, 1);
-        pipeline.hincrby(`analytics:ab:nudge_${metadata.nudgeNum}:${variant}:${dateKey}`, event, 1);
-      }
+      pipeline.hincrby(`analytics:ab:variant_${metadata.abVariant}`, event, 1);
     }
-
-    // 4. Global metric
-    pipeline.hincrby('analytics:global', event, 1);
-    pipeline.hincrby(`analytics:global:${dateKey}`, event, 1);
 
     await pipeline.exec();
   } catch (err) {

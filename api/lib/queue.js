@@ -133,15 +133,29 @@ async function getDueMessages(limit = 50) {
       return [];
     }
 
+    // Batch fetch all message data in a single mget call instead of N individual gets
+    const keys = readyMembers.map(m => `msg:${m}`);
+    const items = await redis.mget(...keys);
+
     const messages = [];
-    for (const member of readyMembers) {
-      const data = await redis.get(`msg:${member}`);
+    const staleMembers = [];
+
+    for (let i = 0; i < readyMembers.length; i++) {
+      const data = items[i];
       if (data) {
-        messages.push({ ...data, memberKey: member });
+        messages.push({ ...data, memberKey: readyMembers[i] });
       } else {
-        // Stale queue pointer cleanup
-        await redis.zrem(QUEUE_KEY, member);
+        staleMembers.push(readyMembers[i]);
       }
+    }
+
+    // Batch cleanup stale queue pointers via pipeline
+    if (staleMembers.length > 0) {
+      const pipeline = redis.pipeline();
+      for (const member of staleMembers) {
+        pipeline.zrem(QUEUE_KEY, member);
+      }
+      await pipeline.exec();
     }
 
     return messages;
@@ -222,9 +236,10 @@ async function markPhoneBlocked(phone, reason = 'unknown') {
   const redis = getRedis();
   if (!redis || !phone) return;
   try {
-    await redis.set(`blocked:${phone}`, { reason, blocked_at: new Date().toISOString() });
+    // 90-day TTL: allow blocked customers to naturally re-enter the funnel
+    await redis.set(`blocked:${phone}`, { reason, blocked_at: new Date().toISOString() }, { ex: 90 * 24 * 60 * 60 });
     await cancelAllMessagesForPhone(phone);
-    console.log(`[Queue] Phone ${phone} marked as blocked/opted-out. Reason: ${reason}`);
+    console.log(`[Queue] Phone ${phone} marked as blocked/opted-out (90-day TTL). Reason: ${reason}`);
   } catch (err) {
     console.warn(`[Queue] Error marking ${phone} as blocked:`, err.message);
   }
