@@ -22,23 +22,92 @@ const { getEasyEcomOrder } = require('./lib/easyecom');
 module.exports = async (req, res) => {
   // CORS headers for cross-origin widget requests
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
   }
 
-  if (req.method !== 'GET') {
-    return res.status(200).send('Chatbot Order Lookup API is active.');
+  // Safely parse JSON body if sent via POST
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (_) {
+      body = {};
+    }
   }
+  body = body || {};
 
-  const query = (req.query.q || '').trim();
+  const rawQuery = (
+    body.order_id ||
+    body.orderId ||
+    body.q ||
+    body.query ||
+    (req.query && (req.query.q || req.query.order_id || req.query.orderId || req.query.query)) ||
+    ''
+  );
+  const query = String(rawQuery).trim();
 
   if (!query) {
+    if (req.method === 'GET') {
+      return res.status(200).json({
+        status: 'ok',
+        message: 'Chatbot Order Lookup API is active.',
+      });
+    }
     return res.status(400).json({
       found: false,
-      error: 'Missing query parameter "q". Pass an Order ID or phone number.',
+      order_status: 'Not Found',
+      orderStatus: 'Not Found',
+      status: 'NOT_FOUND',
+      courier_name: 'N/A',
+      tracking_link: 'N/A',
+      delivery_updates: 'Please provide an Order ID (e.g. PPY21302) or 10-digit mobile number.',
+      error: 'Missing query parameter. Pass "order_id" in body or "q" in query.',
+    });
+  }
+
+  // Handle template placeholder or test request from AiSensy Flow Builder
+  if (query === '$order_id' || query.toLowerCase() === 'test' || query.toLowerCase() === 'sample') {
+    return res.status(200).json({
+      found: true,
+      source: 'sample',
+      orderId: 'PPY21302',
+      order_id: 'PPY21302',
+      orderNumber: '21302',
+      customerName: 'Customer',
+      city: 'Jaipur',
+      province: 'Rajasthan',
+      courier_name: 'Pikndel Express (Jaipur)',
+      courierName: 'Pikndel Express (Jaipur)',
+      carrier: 'Pikndel Express (Jaipur)',
+      logisticsPartner: 'Pikndel',
+      trackingNumber: 'TEST123456',
+      trackingUrl: 'https://pikndel.com/tracking/TEST123456',
+      tracking_link: 'https://pikndel.com/tracking/TEST123456',
+      trackingLink: 'https://pikndel.com/tracking/TEST123456',
+      order_status: 'IN_TRANSIT',
+      orderStatus: 'IN_TRANSIT',
+      status: 'IN_TRANSIT',
+      delivery_updates: 'Dispatched from warehouse in thermal packaging with gel ice packs.',
+      deliveryUpdates: 'Dispatched from warehouse in thermal packaging with gel ice packs.',
+      statusText: 'Dispatched from warehouse in thermal packaging with gel ice packs.',
+      step: 2,
+      rider: null,
+      items: ['Chicken Breast 500g (x1)'],
+      totalPrice: '₹450',
+      financialStatus: 'paid',
+      eta: 'Today by evening',
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
+        hour: '2-digit',
+        minute: '2-digit',
+        day: '2-digit',
+        month: 'short',
+      }),
     });
   }
 
@@ -208,22 +277,35 @@ module.exports = async (req, res) => {
 
       const itemsList = (orderResult.items || []).map(i => `${i.title} (x${i.quantity})`);
 
+      const trackingLinkVal = trackingUrl || (trackingNumber ? (logisticsPartner === 'Pikndel' ? `https://pikndel.com/tracking/${trackingNumber}` : 'https://zippee.delivery') : 'Tracking link will be updated once dispatched');
+
       return res.status(200).json({
         found: true,
         source,
         orderId: orderResult.orderId,
+        order_id: orderResult.orderId,
         orderNumber: orderResult.orderNumber,
         customerName: orderResult.customerName,
         city: orderResult.city,
         province: orderResult.province,
+        // Courier & Tracking aliases
         carrier,
+        courier_name: carrier,
+        courierName: carrier,
         logisticsPartner,
-        status,
-        statusText,
-        step,
-        rider,
         trackingNumber,
         trackingUrl,
+        tracking_link: trackingLinkVal,
+        trackingLink: trackingLinkVal,
+        // Status & Delivery Updates aliases
+        status,
+        order_status: status,
+        orderStatus: status,
+        statusText,
+        delivery_updates: statusText,
+        deliveryUpdates: statusText,
+        step,
+        rider,
         items: itemsList,
         totalPrice: orderResult.totalPrice ? `₹${parseFloat(orderResult.totalPrice).toFixed(0)}` : null,
         financialStatus: orderResult.financialStatus,
@@ -240,17 +322,31 @@ module.exports = async (req, res) => {
     }
 
     if (leadData) {
+      const leadStatus = leadData.status === 'CONVERTED' ? 'CONFIRMED' : 'PROCESSING';
+      const leadStatusText = leadData.status === 'CONVERTED'
+        ? 'Your order is confirmed and being prepared!'
+        : 'We found your details. Please complete checkout to place your order.';
+
       return res.status(200).json({
         found: true,
         source: 'redis',
         orderId: leadData.order_id || 'Processing',
+        order_id: leadData.order_id || 'Processing',
         customerName: leadData.name || 'Customer',
         city: leadData.city || '',
         carrier: 'Protein Pantry Logistics',
-        status: leadData.status === 'CONVERTED' ? 'CONFIRMED' : 'PROCESSING',
-        statusText: leadData.status === 'CONVERTED'
-          ? 'Your order is confirmed and being prepared!'
-          : 'We found your details. Please complete checkout to place your order.',
+        courier_name: 'Protein Pantry Logistics',
+        courierName: 'Protein Pantry Logistics',
+        logisticsPartner: 'Protein Pantry',
+        status: leadStatus,
+        order_status: leadStatus,
+        orderStatus: leadStatus,
+        statusText: leadStatusText,
+        delivery_updates: leadStatusText,
+        deliveryUpdates: leadStatusText,
+        tracking_link: 'Tracking link will be generated once dispatched',
+        trackingLink: 'Tracking link will be generated once dispatched',
+        trackingUrl: null,
         step: 1,
         rider: null,
         eta: 'Processing',
@@ -260,16 +356,40 @@ module.exports = async (req, res) => {
     }
 
     // ─── NOT FOUND ───
+    const notFoundMsg = `No order found for "${query}". Please check your Order ID or mobile number.`;
     return res.status(200).json({
       found: false,
-      message: `No order found for "${query}". Please check the ID or mobile number.`,
+      order_status: 'Not Found',
+      orderStatus: 'Not Found',
+      status: 'NOT_FOUND',
+      courier_name: 'N/A',
+      courierName: 'N/A',
+      carrier: 'N/A',
+      tracking_link: 'N/A',
+      trackingLink: 'N/A',
+      trackingUrl: null,
+      delivery_updates: notFoundMsg,
+      deliveryUpdates: notFoundMsg,
+      statusText: notFoundMsg,
+      message: notFoundMsg,
       query,
     });
 
   } catch (error) {
     console.error('[Chatbot Lookup Error]:', error.message);
+    const errMsg = 'Error looking up order details. Please contact customer support.';
     return res.status(500).json({
       found: false,
+      order_status: 'Error',
+      orderStatus: 'Error',
+      status: 'ERROR',
+      courier_name: 'N/A',
+      courierName: 'N/A',
+      tracking_link: 'N/A',
+      trackingLink: 'N/A',
+      delivery_updates: errMsg,
+      deliveryUpdates: errMsg,
+      statusText: errMsg,
       error: 'Internal error while looking up order details.',
     });
   }
