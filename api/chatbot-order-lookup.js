@@ -174,7 +174,7 @@ module.exports = async (req, res) => {
       const fulfillments = orderResult.fulfillments || [];
       const latestFulfillment = fulfillments.length > 0 ? fulfillments[fulfillments.length - 1] : null;
 
-      let carrier = isJaipur ? 'Pikndel Express (Jaipur)' : 'Zippee Express (Cold-Chain)';
+      let carrier = isJaipur ? 'Pikndel Express (Jaipur)' : 'Zippee Express';
       let logisticsPartner = isJaipur ? 'Pikndel' : 'Zippee';
       let trackingNumber = null;
       let trackingUrl = null;
@@ -185,10 +185,10 @@ module.exports = async (req, res) => {
           carrier = 'Pikndel Express (Jaipur)';
           logisticsPartner = 'Pikndel';
         } else if (company.includes('zippee')) {
-          carrier = 'Zippee Express (Cold-Chain)';
+          carrier = 'Zippee Express';
           logisticsPartner = 'Zippee';
         } else if (latestFulfillment.trackingCompany) {
-          carrier = latestFulfillment.trackingCompany;
+          carrier = latestFulfillment.trackingCompany.replace(/\s*\(cold-chain\)/i, '').trim();
         }
 
         trackingNumber = latestFulfillment.trackingNumber || null;
